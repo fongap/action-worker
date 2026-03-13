@@ -27,4 +27,4 @@
 - **权限隔离**: 采用 Fine-grained PAT，严格限制跨仓库访问权限。
 
 ---
-© 2026 YourName | Managed via GitHub Actions
+© 2026 Fongap | Managed via GitHub Actions
