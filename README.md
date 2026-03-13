@@ -27,3 +27,8 @@
 * **稀疏检出**：仅拉取指定的项目子目录，不接触金库全貌。
 * **隔离运行**：每个任务模块在独立的虚拟机中运行，产物通过 Artifact 安全传递。
 
+<<<<<<< HEAD
+=======
+---
+© 2026 Fongap | Managed via GitHub Actions
+>>>>>>> b941e9b2eb23cc34d2a491866ed41d3aabbbb21c
