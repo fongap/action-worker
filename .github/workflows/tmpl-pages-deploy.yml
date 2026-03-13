@@ -2,11 +2,19 @@ name: Module - Pages Deploy
 
 on:
   workflow_call:
-    # 增加 inputs 接收来源路径
     inputs:
       project_path:
         required: true
         type: string
+      dist_dir:
+        description: '静态文件目录'
+        type: string
+        default: 'dist'
+    secrets:
+      CF_API_TOKEN:
+        required: true
+      CF_ACCOUNT_ID:
+        required: true
 
 jobs:
   deploy:
@@ -17,36 +25,46 @@ jobs:
       - name: Initialize Project Context
         id: context
         run: |
-          # 1. 获取仓库名称并去除 'project-' 前缀
-          REPO_NAME="${{ github.event.repository.name }}"
-          PROJECT_NAME=$(echo "$REPO_NAME" | sed 's/^project-//')
+          # 1. 从项目路径中提取文件夹名称 (例如: apps/project-demo -> project-demo)
+          DIR_NAME=$(basename "${{ inputs.project_path }}")
+          
+          # 2. 去除 'project-' 前缀
+          PROJECT_NAME=$(echo "$DIR_NAME" | sed 's/^project-//')
           
           echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV
-          echo "项目名称: $PROJECT_NAME"
+          echo "最终 Cloudflare 项目名: $PROJECT_NAME"
 
       - name: Ensure Project Exists
         run: |
-          # 2. 检查项目是否存在 (GET 请求)
+          # 3. 检查项目是否存在 (GET 请求)
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
             "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/pages/projects/$PROJECT_NAME")
 
-          # 3. 如果返回 404，则执行新建 (POST 请求)
+          # 4. 如果返回 404，则执行新建 (POST 请求)
           if [ "$STATUS" = "404" ]; then
-            echo "项目不存在，正在创建..."
+            echo "项目 $PROJECT_NAME 不存在，正在创建..."
             curl -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/pages/projects" \
               -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
               -H "Content-Type: application/json" \
               -d "{\"name\": \"$PROJECT_NAME\", \"production_branch\": \"main\"}"
           else
-            echo "项目已存在，准备覆盖部署。"
+            echo "项目 $PROJECT_NAME 已存在，准备执行覆盖部署。"
           fi
 
       - name: Deploy to Cloudflare Pages
         run: |
-          # 4. 安装并执行部署 (Wrangler 自动处理覆盖)
+          # 5. 安装 Wrangler 并部署
           npm install -g wrangler
-          wrangler pages deploy dist --project-name=$PROJECT_NAME --branch=main
+          
+          # 确保目录存在，防止 Wrangler 报错
+          mkdir -p ${{ inputs.dist_dir }}
+          
+          # 执行部署 (Wrangler 自动将新上传包设为 Current)
+          wrangler pages deploy ${{ inputs.dist_dir }} \
+            --project-name=$PROJECT_NAME \
+            --branch=main \
+            --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
