@@ -1,3 +1,12 @@
+# ==================================================================
+# 版本：0.26.03.13
+# [Secret]  
+# VAULT_WORKER_BRIDGE_TOKEN    # Github 跨仓库授权桥接令牌。
+#
+# CF_ACCOUNT_ID                # Cloudflare 帐户ID。
+# CF_Pages_WRITE_TOKEN         # Cloudflare Pages 编辑权限令牌。
+# ==================================================================
+
 name: Module - CFPages Deploy
 
 on:
@@ -33,16 +42,23 @@ jobs:
           sparse-checkout: ${{ inputs.project_path }}
           sparse-checkout-cone-mode: false
 
+      - name: 🏷️ Resolve Project Name
+        run: |
+          # 提取小写项目名并存入全局环境变量，供后续所有步骤使用
+          CLEAN_NAME=$(echo "${{ inputs.project_path }}" | sed 's/^Project-//' | tr '[:upper:]' '[:lower:]')
+          echo "CF_PROJECT_NAME=$CLEAN_NAME" >> $GITHUB_ENV
+          echo "已确立项目名称为: $CLEAN_NAME"
+
       - name: 🚀 Deploy to Cloudflare Pages
         id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_Pages_WRITE_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          # 动态计算路径与项目名
+          # 调用预先计算好的环境变量
           command: >
             pages deploy ${{ inputs.project_path }}/${{ inputs.publish_dir }}
-            --project-name=$(echo "${{ inputs.project_path }}" | sed 's/^Project-//' | tr '[:upper:]' '[:lower:]')
+            --project-name=${{ env.CF_PROJECT_NAME }}
             --branch=main
 
       - name: 🧹 Cleanup Old Deployments
@@ -53,12 +69,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1. 动态获取项目名称（保持与部署逻辑一致）
-          CF_PROJECT_NAME=$(echo "${{ inputs.project_path }}" | sed 's/^Project-//' | tr '[:upper:]' '[:lower:]')
-          echo "目标项目: $CF_PROJECT_NAME"
+          # 直接复用步骤 2 中注入的 CF_PROJECT_NAME
+          echo "目标项目: ${{ env.CF_PROJECT_NAME }}"
 
-          # 2. 拉取生产环境的部署列表
-          API_URL="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT_NAME}/deployments"
+          # 拉取生产环境的部署列表
+          API_URL="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${{ env.CF_PROJECT_NAME }}/deployments"
           
           # 翻页获取最近的部署 (通常前几页就够了)
           response=$(curl -s -X GET "$API_URL?per_page=25" \
@@ -78,7 +93,7 @@ jobs:
             exit 0
           fi
           
-          # 3. 筛选逻辑：生产环境 + 状态成功 + 按时间排序
+          # 筛选逻辑：生产环境 + 状态成功 + 按时间排序
           # 排除掉最新的 $CF_DEPLOYMENTS_LIMIT 个 ID
           mapfile -t TO_DELETE < <(echo "$response" | jq -r \
             --argjson keep "$CF_DEPLOYMENTS_LIMIT" \
@@ -92,7 +107,7 @@ jobs:
             exit 0
           fi
 
-          # 4. 执行并发删除
+          # 执行并发删除
           echo "发现旧版本 ${#TO_DELETE[@]} 个，正在清理..."
           printf '%s\n' "${TO_DELETE[@]}" | xargs -I {} -P "$CF_REQUEST_LIMIT" bash -c \
             "curl -s -X DELETE '$API_URL/{}?force=true' \
