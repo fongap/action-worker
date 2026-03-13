@@ -1,20 +1,3 @@
-/**
- * 版本：0.26.03.13
- * [Secret]  
- * VAULT_WORKER_BRIDGE_TOKEN    # Github 跨仓库授权桥接令牌。
- *
- * CF_ACCOUNT_ID                # Cloudflare 帐户ID。
- * CF_Workers_WRITE_TOKEN       # Cloudflare Workers 编辑权限令牌。
- *
- * ENS_RESEND_KEY               # Resend 邮件服务 API Key
- * ENS_ADMIN_TOKEN              # Engine Suite 管理端鉴权令牌
- * ENS_GH_PAT_TOKEN             # 用于在 Worker 中操作 GitHub 的令牌
- * ENS_WEBHOOK_SECRET           # Engine Suite Webhook 签名验证密钥
- * ENS_ALGOLIA_SYNC_TOKEN       # Algolia WRIT KEY
- * ENS_TURNSTILE_SECRET_KEY     # TURNSTILE SECRET Key
- *
- */
- 
 name: Module - Workers Deploy
 
 on:

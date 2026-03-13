@@ -1,13 +1,3 @@
-/**
- * 版本：0.26.03.13
- * [Secret] 跨仓库授权桥接令牌 
- * VAULT_WORKER_BRIDGE_TOKEN    # 职能：1. 驱动调度信号发射；2. 授权工坊检出私有源码。
- *
- * CF_ACCOUNT_ID                # Cloudflare 帐户ID。
- * CF_Pages_WRITE_TOKEN         # Cloudflare Pages 编辑权限令牌。
- *
- */
-
 name: Module - CFPages Deploy
 
 on:
