@@ -71,4 +71,6 @@ jobs:
   pages-deploy:
     if: contains(github.event.client_payload.tasks, 'pages-deploy')
     uses: ./.github/workflows/tmpl-pages-deploy.yml
+    with:
+      dist_dir: 'dist' 
     secrets: inherit
