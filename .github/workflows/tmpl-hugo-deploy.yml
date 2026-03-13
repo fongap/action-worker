@@ -26,7 +26,7 @@ jobs:
       - name: 🏷️ 解析项目名称
         run: |
           # 提取小写项目名并存入全局环境变量
-          CLEAN_NAME=$(echo "${{ inputs.project_path }}" | sed 's/^Project-//' | tr '[:upper:]' '[:lower:]')
+          CLEAN_NAME=${{ vars.CF_PROJECT_NAME }}
           echo "CF_PROJECT_NAME=$CLEAN_NAME" >> $GITHUB_ENV
           echo "已确立项目名称为: $CLEAN_NAME"
 
