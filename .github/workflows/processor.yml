@@ -64,3 +64,15 @@ jobs:
       project_path: ${{ github.event.client_payload.project_path }}
       publish_dir: ${{ github.event.client_payload.publish_dir }}
     secrets: inherit
+    
+  # ==========================================
+  # 模块 6：Test 部署引擎
+  # ==========================================    
+  cfpages-deploy:
+    if: contains(github.event.client_payload.tasks, 'pages-deploy')
+    uses: ./.github/workflows/tmpl-pages-deploy.yml
+    with:
+      source_repo: ${{ github.event.client_payload.source_repo }}
+      project_path: ${{ github.event.client_payload.project_path }}
+      publish_dir: ${{ github.event.client_payload.publish_dir }}
+    secrets: inherit
