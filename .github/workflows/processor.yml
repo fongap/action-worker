@@ -24,6 +24,8 @@ jobs:
     # 触发条件：A. 构建成功 + B. 清单中包含 hugo-deploy
     if: success() && contains(github.event.client_payload.tasks, 'hugo-deploy')
     uses: ./.github/workflows/tmpl-hugo-deploy.yml
+    with:
+      project_path: ${{ matrix.project }} #
     secrets: inherit
 
   # ==========================================
@@ -42,8 +44,8 @@ jobs:
   # ==========================================
   # 模块 4：Cloudflare Workers 部署引擎
   # ==========================================
-  worker-deploy:
-    # 触发条件：清单中包含 workers-deploy
+  cfworker-deploy:
+    # 触发条件：清单中包含 cfworkers-deploy
     if: contains(github.event.client_payload.tasks, 'cfworkers-deploy')
     uses: ./.github/workflows/tmpl-cfworkers-deploy.yml
     with:

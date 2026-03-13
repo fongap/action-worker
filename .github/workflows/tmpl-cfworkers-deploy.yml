@@ -1,4 +1,4 @@
-name: Module - Workers Deploy
+name: Module - CFWorkers Deploy
 
 on:
   workflow_call:
