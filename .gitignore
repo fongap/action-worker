@@ -1,0 +1,23 @@
+#action-worker 专用，侧重于：配置整洁、防止逻辑污染。
+
+# --- 工作流配置保护 ---
+# 忽略本地调试 Action 时产生的临时日志
+*.log
+.github/local_test/
+
+# --- 操作系统与 IDE (通用) ---
+# 即使只有几个脚本，也要防止系统缩略图被传上去
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- 编辑器配置 ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- 临时/备份文件 ---
+*.bak
+*.tmp
+*~
