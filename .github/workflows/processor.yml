@@ -74,5 +74,4 @@ jobs:
     with:
       source_repo: ${{ github.event.client_payload.source_repo }}
       project_path: ${{ github.event.client_payload.project_path }}
-      publish_dir: ${{ github.event.client_payload.publish_dir }}
     secrets: inherit
