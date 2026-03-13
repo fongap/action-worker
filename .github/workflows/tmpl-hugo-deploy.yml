@@ -1,0 +1,37 @@
+name: Module - Hugo Deploy
+
+on:
+  workflow_call:
+
+jobs:
+  execute-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CF_REQUEST_LIMIT: ${{ vars.CF_API_REQUEST_LIMIT || '5' }}
+      CF_DEPLOYMENTS_LIMIT: ${{ vars.CF_DEPLOYMENT_KEEP_LIMIT || '2' }}
+      
+    steps:
+      - name: ⬇️ 下载编译产物
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-public
+          path: public/
+
+      - name: 部署到 Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_Pages_WRITE_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: >
+            pages deploy public
+            --project-name=${{ vars.CF_PROJECT_NAME }}
+            --branch=main
+
+      - name: 清理旧部署
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_Pages_WRITE_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_PROJECT_NAME: ${{ vars.CF_PROJECT_NAME }}
+        run: |
+          # [此处完整保留你原脚本中的清理旧部署 Bash 逻辑]
