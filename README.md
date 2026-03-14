@@ -1,7 +1,6 @@
 # Action Worker
 
-**Action Worker** 是一个基于 GitHub Actions 构建的“纯粹计算壳”。它遵循**算力与资产分离**原则，仅作为执行载体，不承载业务逻辑。
-
+**Action Worker** 是一个基于 GitHub Actions 构建的 CI/CD 执行中心。它遵循**算力与资产分离**原则，仅作为执行载体，不承载业务逻辑。
 
 ## 🎯 核心定位
 
