@@ -1,34 +1,77 @@
-# ⚙️ Action Worker | 自动化全能工坊
+# Action Worker
 
-这是整个系统的**控制面 (Control Plane)**。它是一个纯粹的算力壳，负责执行来自“源码仓库”的指令。
-
-## 🧠 运行机制：模块化调度
-
-本工坊不持有任何业务逻辑，它只是一组**原子化能力 (Atomic Capabilities)** 的集合。
-
-1. **入口 (Router)**：`processor.yml` 接收到 Webhook 信号。
-2. **编排 (Orchestrator)**：根据信号中的 `tasks` 数组，利用 GitHub Actions 的 `needs` 逻辑并行或串行调度子任务。
-3. **执行 (Execution)**：调用对应的 `tmpl-*.yml` 模块，执行具体的构建、部署或同步操作。
-
-## 🛠️ 原子模块注册表
+Action Worker** 是一个基于 GitHub Actions 构建的“纯粹计算壳”。它遵循**算力与资产分离**原则，仅作为执行载体，不承载业务逻辑。
 
 
-| **模块 ID**           | **文件路径**              | **核心职能描述**                                      |  |  |  |
-| ----------------------------- | --------------------------------- | ------------------------------------------------------------- | -- | -- | -- |
-| **`hugo-build`**       | `tmpl-hugo-build.yml`       | 执行环境自动化编排、站点核心编译及构建产物 (Artifacts) 归档 |
-| **`hugo-deploy`**      | `tmpl-hugo-deploy.yml`      | 站点发布至 Cloudflare Pages 与部署版本生命周期管理          |
-| **`algolia-sync`**     | `tmpl-algolia-sync.yml`     | 内容差异化特征分析与 Algolia 全球索引高并发同步             |
-| **`cfworkers-deploy`** | `tmpl-cfworkers-deploy.yml` | Cloudflare Workers 脚本分发、Secrets 注入及版本冗余清理     |
-| **`cfpages-deploy`**   | `tmpl-cfpages-deploy.yml`   | 静态资产 (Assets) 边缘分发与版本冗余自动化清理              |
+## 🎯 核心定位
 
-## 🛡️ 安全特性
+在现代平台工程 (Platform Engineering) 实践中，本项目扮演 **执行调度层 (Execution Layer)** 的角色：
 
-* **SHA 锁定**：所有使用的第三方 Action 均通过 Commit SHA 锁定版本，防止供应链攻击。
-* **稀疏检出**：仅拉取指定的项目子目录，不接触金库全貌。
-* **隔离运行**：每个任务模块在独立的虚拟机中运行，产物通过 Artifact 安全传递。
+-   **解耦执行**：本仓库不存储任何业务代码，仅负责环境初始化与任务路由。
+-   **动态拉取**：核心构建逻辑与资源在运行时从加密的“资产仓库”动态挂载。
+-   **无痕运行**：工作流执行结束后，计算环境立即销毁，不留存任何持久化数据。
 
-<<<<<<< HEAD
-=======
 ---
-© 2026 Fongap | Managed via GitHub Actions
->>>>>>> b941e9b2eb23cc34d2a491866ed41d3aabbbb21c
+
+## 🏗 架构设计
+
+本项目将 CI/CD 流程分为两个维度：
+
+| 维度 | 角色 | 职能 |
+| :--- | :--- | :--- |
+| **算力层 (Worker)** | **本仓库** | 运行环境准备、安全策略校验、Task 调度引擎。 |
+| **资产层 (Vault)** | **私有源仓库** | 业务源码、核心配置、`.scripts/` 原子脚本、`task.json` 任务清单。 |
+
+---
+
+## 🔒 安全机制 (Security Hardening)
+
+1. **零硬编码**：源仓库地址与工作目录均通过 GitHub Secrets 动态注入，对本仓库完全隐身。
+2. **安全机制**：严校传入的 Payload 路径，禁止 `../` 目录穿越，强制限定只读特定前缀的目录。
+3. **静默执行**：全局禁用 `set -x` 调试输出模式，防止 Token 或敏感环境变量在 Logs 中意外泄露。
+
+---
+
+## ⚙️ 运行逻辑
+
+Action Worker 按照以下生命周期执行任务
+
+1. ​**事件监听**​：接收类型为 `project_trigger` 的调度事件，通过 `repository_dispatch` 接口激活自动化流水线。
+2. ​**载荷解析**​：提取 `client_payload` 中的路径信息，校验并锁定 `project_path` 以确定本次任务的执行目标。
+3. ​**资产挂载**​：利用私密凭证动态克隆资产仓库，将其检出至本地脱敏目录，完成“计算”与“数据”的即时组装。
+4. ​**指令路由**​：检索目标项目内的 `task.json` 配置文件，精确解析并生成本次构建流程所需的原子化任务执行清单。
+5. ​**原子执行**​：按序调用资产仓库内的 `.scripts/` 脚本，在受控的静默环境下完成最终的代码构建、测试与部署任务。
+
+---
+
+## 🛠 配置要求
+
+### GitHub Secrets 注入
+为保证工作流正常运行，请在仓库设置中配置以下 Secrets：
+
+| Secret 名称 | 说明 |
+| :--- | :--- |
+| `SOURCE_VAULT_PAT` | 具备访问私有资产仓库权限的 Personal Access Token。 |
+| `SOURCE_VAULT_REPO` | 资产仓库的完整路径 (例如 `org/private-vault`)。 |
+| `VAULT_DIR_NAME` | 运行时本地脱敏目录的伪装名称。 |
+
+> [!TIP]
+> 部分原子脚本可能需要额外的运行时参数（如云服务凭证），建议同样通过本仓库的 Secrets 集中管理。
+
+---
+
+## 🚀 触发示例 (Dispatch Trigger)
+
+可以通过以下 API 调用来触发 Worker 执行：
+
+```bash
+curl -X POST \
+  -H "Accept: application/vnd.github.v3+json" \
+  -H "Authorization: token YOUR_GITHUB_PAT" \
+  [https://api.github.com/repos/](https://api.github.com/repos/){owner}/{repo}/dispatches \
+  -d '{
+    "event_type": "project_trigger",
+    "client_payload": {
+      "project_path": "Project-Awesome-App"
+    }
+  }'

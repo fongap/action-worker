@@ -1,0 +1,89 @@
+name: 边缘安全执行器 (Secure Edge Executor)
+
+on:
+  repository_dispatch:
+    # 仅响应由源码仓库发起的 project_trigger 类型事件
+    types: [project_trigger]
+
+jobs:
+  execute-pipeline:
+    name: 执行自动化流水线
+    runs-on: ubuntu-latest
+    env:
+      # 从公开仓库 Secrets 注入敏感资产信息
+      VAULT_REPO: ${{ secrets.SOURCE_VAULT_REPO }}
+      VAULT_DIR: ${{ secrets.VAULT_DIR_NAME }}
+      # 从触发载荷 (Payload) 获取动态项目路径
+      PROJECT_PATH: ${{ github.event.client_payload.project_path }}
+      # 注入 Cloudflare 部署凭证
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+    
+    steps:
+      - name: 安全审计与路径有效性校验
+        run: |
+          set +x # 强制关闭命令回显，防止 Secrets 意外打印到日志
+          
+          echo "正在启动安全审计..."
+          
+          # 防范目录穿越攻击 (检测 ../ 或绝对路径符号)
+          if [[ "$PROJECT_PATH" == *".."* ]] || [[ "$PROJECT_PATH" == /* ]]; then
+            echo "::error::安全警报：检测到非法目录穿越请求！"
+            exit 1
+          fi
+          
+          # 强制前缀校验：仅允许操作 Project- 开头的目录
+          if [[ "$PROJECT_PATH" != Project-* ]]; then
+            echo "::error::安全警报：目标路径未命中预设的项目命名规范 (Project-*)！"
+            exit 1
+          fi
+          
+          echo "路径安全审计通过：$PROJECT_PATH"
+
+      - name: 检出源码仓库
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.VAULT_REPO }}
+          token: ${{ secrets.SOURCE_VAULT_PAT }}
+          path: ${{ env.VAULT_DIR }}
+
+      - name: 初始化 Node.js 运行时
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 零信任架构下的套娃任务调度
+        run: |
+          set +x # 再次确认关闭回显，保护业务脚本内的 Token
+          
+          # 进入脱敏工作目录
+          cd "$VAULT_DIR"
+          TASK_FILE="./${PROJECT_PATH}/task.json"
+          
+          if [ ! -f "$TASK_FILE" ]; then
+            echo "::error::未能在项目路径 ${PROJECT_PATH} 下找到 task.json 配置文件！"
+            exit 1
+          fi
+          
+          # 使用 jq 提取声明的任务清单
+          TASKS=$(jq -r '.tasks[]' "$TASK_FILE")
+          
+          # 按照声明顺序，循环调用中央脚本库 (.scripts/) 中的原子脚本
+          for TASK in $TASKS; do
+            SCRIPT_PATH="../../.scripts/${TASK}.sh"
+            
+            # 进入目标项目目录，锁定执行上下文
+            cd "./${PROJECT_PATH}"
+            
+            if [ -x "$SCRIPT_PATH" ]; then
+              # 以当前项目目录为上下文，执行中央脚本逻辑
+              bash "$SCRIPT_PATH"
+            else
+              echo "::error::调度失败：中央脚本库中不存在 [${TASK}.sh] 或其缺失执行权限！"
+              exit 1
+            fi
+            
+            # 任务执行完毕，静默返回上一级目录，准备进入下一个任务循环
+            cd - > /dev/null
+            echo "--- 任务 $TASK 执行完成 ---"
+          done
