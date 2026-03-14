@@ -1,0 +1,5 @@
+# 强制将 YAML 视为核心编程语言进行统计
+*.yml linguist-detectable=true
+*.yaml linguist-detectable=true
+*.yml linguist-documentation=false
+*.yaml linguist-documentation=false
