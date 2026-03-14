@@ -1,6 +1,6 @@
 
-.github/workflows/*.yml linguist-detectable=true linguist-documentation=false
-.github/workflows/*.yaml linguist-detectable=true linguist-documentation=false
+.github/workflows/*.yml linguist-language=YAML
+.github/workflows/*.yaml linguist-language=YAML
 
 *.yml linguist-detectable=true
 *.yaml linguist-detectable=true
