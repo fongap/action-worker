@@ -2,7 +2,7 @@
 
 ![构建状态](https://img.shields.io/github/actions/workflow/status/fongap/action-worker/executor.yml?label=构建状态&logo=githubactions&logoColor=white&color=28a745)
 ![最近更新](https://img.shields.io/github/last-commit/fongap/action-worker?label=最近更新&logo=git&logoColor=white&color=007acc)
-![核心语言](https://img.shields.io/github/languages/top/fongap/action-worker?label=核心语言&logo=github&logoColor=white&color=6f42c1&cacheSeconds=0)
+![核心语言](https://img.shields.io/badge/核心语言-YAML-6f42c1?logo=github&logoColor=white&color=6f42c1)
 ![数据规模](https://img.shields.io/github/repo-size/fongap/action-worker?label=数据规模&logo=databricks&logoColor=white&color=4682b4)
 ![开源许可](https://img.shields.io/badge/开源许可-MIT%20License-d97706?logo=opensourceinitiative&logoColor=white)
 
