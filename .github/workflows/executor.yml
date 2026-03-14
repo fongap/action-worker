@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # 从公开仓库 Secrets 注入敏感资产信息
-      VAULT_REPO: ${{ secrets.SOURCE_VAULT_REPO }}
-      VAULT_DIR: ${{ secrets.VAULT_DIR_NAME }}
+      VAULT_REPO: ${{ secrets.GH_SOURCE_VAULT_REPO }}
+      VAULT_DIR: ${{ secrets.GH_VAULT_DIR_NAME }}
       # 从触发载荷 (Payload) 获取动态项目路径
       PROJECT_PATH: ${{ github.event.client_payload.project_path }}
       # 注入 Cloudflare 部署凭证
@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.VAULT_REPO }}
-          token: ${{ secrets.SOURCE_VAULT_PAT }}
+          token: ${{ secrets.GH_SOURCE_VAULT_PAT }}
           path: ${{ env.VAULT_DIR }}
 
       - name: 初始化 Node.js 运行时
