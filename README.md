@@ -1,11 +1,17 @@
-# Action Worker
+# 🚀 Action Worker
 
-Action Worker** 是一个基于 GitHub Actions 构建的“纯粹计算壳”。它遵循**算力与资产分离**原则，仅作为执行载体，不承载业务逻辑。
+![构建状态](https://img.shields.io/github/actions/workflow/status/fongap/action-worker/executor.yml?label=构建状态&logo=githubactions&logoColor=white&color=28a745)
+![最近更新](https://img.shields.io/github/last-commit/fongap/action-worker?label=最近更新&logo=git&logoColor=white&color=007acc)
+![核心语言](https://img.shields.io/github/languages/top/fongap/action-worker?label=核心语言&logo=github&logoColor=white&color=6f42c1)
+![数据规模](https://img.shields.io/github/repo-size/fongap/action-worker?label=数据规模&logo=databricks&logoColor=white&color=4682b4)
+![开源许可](https://img.shields.io/badge/开源许可-MIT%20License-d97706?logo=opensourceinitiative&logoColor=white)
 
+
+**Action Worker** 是一个基于 GitHub Actions 构建的 CI/CD 执行中心。它遵循**算力与资产分离**原则，仅作为执行载体，不承载业务逻辑。
 
 ## 🎯 核心定位
 
-在现代平台工程 (Platform Engineering) 实践中，本项目扮演 **执行调度层 (Execution Layer)** 的角色：
+在现代平台工程实践中，本项目扮演 **执行调度层** 的角色：
 
 -   **解耦执行**：本仓库不存储任何业务代码，仅负责环境初始化与任务路由。
 -   **动态拉取**：核心构建逻辑与资源在运行时从加密的“资产仓库”动态挂载。
@@ -19,8 +25,8 @@ Action Worker** 是一个基于 GitHub Actions 构建的“纯粹计算壳”。
 
 | 维度 | 角色 | 职能 |
 | :--- | :--- | :--- |
-| **算力层 (Worker)** | **本仓库** | 运行环境准备、安全策略校验、Task 调度引擎。 |
-| **资产层 (Vault)** | **私有源仓库** | 业务源码、核心配置、`.scripts/` 原子脚本、`task.json` 任务清单。 |
+| **算力层** | **本仓库** | 运行环境准备、安全策略校验、Task 调度引擎。 |
+| **资产层** | **源仓库** | 业务源码、核心配置、原子脚本、任务清单等。 |
 
 ---
 
