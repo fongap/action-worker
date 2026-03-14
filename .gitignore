@@ -1,5 +1,9 @@
 #action-worker 专用，侧重于：配置整洁、防止逻辑污染。
 
+# 强制将所有 YAML 文件识别为可统计的编程语言代码
+*.yml linguist-detectable=true
+*.yaml linguist-detectable=true
+
 # --- 工作流配置保护 ---
 # 忽略本地调试 Action 时产生的临时日志
 *.log
