@@ -61,12 +61,15 @@ jobs:
       ENS_ADMIN_TOKEN: ${{ secrets.ENS_ADMIN_TOKEN }}
       ENS_WEBHOOK_SECRET: ${{ secrets.ENS_WEBHOOK_SECRET }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      # ── 派生路径（依赖 GH_VAULT_DIR_NAME）────────────────────
-      HUGO_PROJECT_DIR: ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}
+      # ── 派生路径 ──────────────────────────────────────────────
+      # VAULT_DIR  = <workspace>/<GH_VAULT_DIR_NAME>  ← 私密仓库根
+      # SCRIPTS_DIR= <VAULT_DIR>/scripts              ← 共享脚本目录
+      # task.json  = <workspace>/task.json            ← 当前项目仓库根
+      HUGO_PROJECT_DIR: ${{ github.workspace }}
       HUGO_CACHE_DIR: ${{ github.workspace }}/.hugo-module-cache
       # ── 版本（vars 覆盖 > versions.env > bootstrap.sh 兜底）─
       # 仅用于缓存 key 计算，实际安装版本由 bootstrap.sh 决定
-      HUGO_VERSION: ${{ vars.HUGO_VERSION || '0.147.3' }}
+      HUGO_VERSION: ${{ vars.HUGO_VERSION || '0.157.0' }}
       NODE_VERSION: ${{ vars.NODE_VERSION || '20.19.1' }}
       WRANGLER_VERSION: ${{ vars.WRANGLER_VERSION || '3.114.0' }}
       # ── 站点配置（来自 vars）─────────────────────────────────
@@ -97,34 +100,24 @@ jobs:
 
           echo "[INFO]  Payload 校验通过"
 
-      # ── 2. 配置 Node.js ──────────────────────────────────────
+      # ── 2. 检出当前项目仓库 ───────────────────────────────────
+      # 使 task.json 出现在 github.workspace 根目录
+      - name: Checkout project repository
+        uses: actions/checkout@v4
+
+      # ── 3. 配置 Node.js ──────────────────────────────────────
       # 由 actions/setup-node 管理 Node 版本，供 npm install -g 使用
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # ── 3. 拉取 internal repo（vault）────────────────────────
+      # ── 4. 拉取 internal repo（vault）────────────────────────
       - name: Clone vault repo
         env:
           GH_SOURCE_VAULT_PAT: ${{ secrets.GH_SOURCE_VAULT_PAT }}
           GH_SOURCE_VAULT_REPO: ${{ secrets.GH_SOURCE_VAULT_REPO }}
         run: |
-          # ── 前置：校验关键 Secret 非空 ───────────────────────
-          if [[ -z "${GH_VAULT_DIR_NAME}" ]]; then
-            echo "[ERROR] GH_VAULT_DIR_NAME 为空，Secret 未正确注入" >&2
-            exit 1
-          fi
-          if [[ -z "${GH_SOURCE_VAULT_PAT}" ]]; then
-            echo "[ERROR] GH_SOURCE_VAULT_PAT 为空，Secret 未正确注入" >&2
-            exit 1
-          fi
-          if [[ -z "${GH_SOURCE_VAULT_REPO}" ]]; then
-            echo "[ERROR] GH_SOURCE_VAULT_REPO 为空，Secret 未正确注入" >&2
-            exit 1
-          fi
-
-          # ── 校验目录名不含危险字符 ────────────────────────────
           if printf '%s' "${GH_VAULT_DIR_NAME}" | grep -qE '[/\\;&|`$\(\)<>\s]|(\.\.)'; then
             echo "[ERROR] GH_VAULT_DIR_NAME 含非法字符，终止执行" >&2
             exit 1
@@ -132,7 +125,6 @@ jobs:
 
           CLONE_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
 
-          # ── 路径安全校验：克隆目录必须在 WORKSPACE 内 ─────────
           RESOLVED=$(realpath -m "${CLONE_DIR}")
           WORKSPACE_RESOLVED=$(realpath "${GITHUB_WORKSPACE}")
           if [[ "${RESOLVED}/" != "${WORKSPACE_RESOLVED}/"* ]]; then
@@ -147,7 +139,6 @@ jobs:
             "https://x-access-token:${GH_SOURCE_VAULT_PAT}@github.com/${GH_SOURCE_VAULT_REPO}.git" \
             "${CLONE_DIR}"
 
-          # ── 如果 Payload 携带具体 SHA，精确检出该提交 ─────────
           if [[ -n "${DEPLOY_SHA}" ]]; then
             pushd "${CLONE_DIR}" > /dev/null
             git fetch --depth 1 \
@@ -160,52 +151,30 @@ jobs:
 
           echo "[INFO]  Vault 克隆完成"
 
-      # ── 4. 校验 Vault 目录结构 ───────────────────────────────
-      - name: Validate vault directory structure
+      # ── 5. 校验目录结构 ───────────────────────────────────────
+      # scripts/ 在私密仓库根目录；task.json 在当前项目仓库根目录
+      - name: Validate directory structure
         run: |
-          # ── 前置：再次校验变量非空（防御性检查）──────────────
-          if [[ -z "${GH_VAULT_DIR_NAME}" ]]; then
-            echo "[ERROR] GH_VAULT_DIR_NAME 为空，无法构造 Vault 路径" >&2
-            exit 1
-          fi
-
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
           SCRIPTS_DIR="${VAULT_DIR}/scripts"
-          TASK_FILE="${VAULT_DIR}/task.json"
+          TASK_FILE="${GITHUB_WORKSPACE}/task.json"
 
-          # ── 诊断：输出实际路径（便于排查，不含敏感值）────────
-          echo "[INFO]  VAULT_DIR   = ${VAULT_DIR}"
-          echo "[INFO]  SCRIPTS_DIR = ${SCRIPTS_DIR}"
-          echo "[INFO]  TASK_FILE   = ${TASK_FILE}"
-
-          # ── 诊断：输出 Vault 根目录结构 ──────────────────────
-          echo "[INFO]  Vault 根目录内容："
-          ls -F "${VAULT_DIR}" 2>&1 || {
-            echo "[ERROR] Vault 根目录不存在或无法访问：${VAULT_DIR}" >&2
-            exit 1
-          }
-
-          # ── 逐路径校验，输出明确的缺失原因 ───────────────────
-          for path in "${VAULT_DIR}" "${SCRIPTS_DIR}" "${TASK_FILE}" "${SCRIPTS_DIR}/bootstrap.sh"; do
+          for path in "${SCRIPTS_DIR}" "${SCRIPTS_DIR}/bootstrap.sh" "${TASK_FILE}"; do
             if [[ ! -e "${path}" ]]; then
               echo "[ERROR] 路径不存在：${path}" >&2
               exit 1
             fi
-            echo "[INFO]  ✓ ${path}"
           done
 
-          # ── 校验 task.json 格式 ──────────────────────────────
           if ! jq -e '.tasks | type == "array"' "${TASK_FILE}" > /dev/null 2>&1; then
             echo "[ERROR] task.json 格式非法，无法解析 .tasks 数组" >&2
-            echo "[INFO]  task.json 原始内容：" >&2
-            cat "${TASK_FILE}" >&2
             exit 1
           fi
 
           TASK_COUNT=$(jq '.tasks | length' "${TASK_FILE}")
-          echo "[INFO]  Vault 校验通过：${TASK_COUNT} 个任务待执行"
+          echo "[INFO]  目录校验通过：${TASK_COUNT} 个任务待执行"
 
-      # ── 5. 缓存恢复：Hugo 二进制 ──────────────────────────────
+      # ── 6. 缓存恢复：Hugo 二进制 ──────────────────────────────
       # 仅恢复缓存，安装由 hugo-build.sh 内的 install_hugo() 负责
       - name: Restore Hugo binary cache
         uses: actions/cache@v4
@@ -213,7 +182,7 @@ jobs:
           path: ~/.local/bin/hugo
           key: hugo-${{ env.HUGO_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
-      # ── 6. 缓存恢复：npm 全局包（含 Wrangler）────────────────
+      # ── 7. 缓存恢复：npm 全局包（含 Wrangler）────────────────
       # 仅恢复缓存，安装由 cfp-deploy.sh / cfw-deploy.sh 内的
       # install_wrangler() 负责
       - name: Restore npm global cache
@@ -224,29 +193,30 @@ jobs:
           restore-keys: |
             npm-global-wrangler-${{ env.WRANGLER_VERSION }}-
 
-      # ── 7. 缓存恢复：Hugo 模块（Go module proxy 产物）─────────
+      # ── 8. 缓存恢复：Hugo 模块（go.sum 位于当前项目仓库根）──
       - name: Restore Hugo module cache
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.hugo-module-cache
-          key: hugo-modules-${{ hashFiles(format('{0}/{1}/go.sum', github.workspace, secrets.GH_VAULT_DIR_NAME)) }}-${{ env.HUGO_VERSION }}
+          key: hugo-modules-${{ hashFiles('go.sum') }}-${{ env.HUGO_VERSION }}
           restore-keys: |
             hugo-modules-
 
-      # ── 8. 注册 ~/.local/bin 到 PATH ─────────────────────────
+      # ── 9. 注册 ~/.local/bin 到 PATH ─────────────────────────
       # 使缓存恢复的二进制（hugo 等）对后续所有 step 可见
       - name: Add local bin to PATH
         run: echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-      # ── 9. 执行任务 ───────────────────────────────────────────
-      # 工具安装完全委托给各原子脚本，此处仅负责调度
+      # ── 10. 执行任务 ──────────────────────────────────────────
+      # scripts/ 来自 vault；task.json 来自当前项目仓库
       - name: Execute tasks from task.json
         run: |
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
           SCRIPTS_DIR="${VAULT_DIR}/scripts"
-          TASK_FILE="${VAULT_DIR}/task.json"
+          TASK_FILE="${GITHUB_WORKSPACE}/task.json"
 
-          # 加载公共函数库
+          export SCRIPTS_DIR
+
           source "${SCRIPTS_DIR}/bootstrap.sh"
 
           log_info "═══ 开始执行任务序列 ═══"
@@ -255,8 +225,6 @@ jobs:
             [[ -z "${task_id}" || "${task_id}" == \#* ]] && continue
 
             script_path="${SCRIPTS_DIR}/${task_id}.sh"
-
-            # 路径安全校验：脚本必须在 SCRIPTS_DIR 内
             resolved_script=$(validate_path "${script_path}" "${SCRIPTS_DIR}")
 
             if [[ ! -f "${resolved_script}" ]]; then
@@ -274,20 +242,13 @@ jobs:
 
           log_info "═══ 全部任务执行完毕 ═══"
 
-      # ── 10. 强制清理 Vault（always，防止源码泄露）────────────
+      # ── 11. 强制清理 Vault（always，防止源码泄露）────────────
       - name: Cleanup vault directory
         if: always()
         run: |
-          # GH_VAULT_DIR_NAME 为空时无法构造路径，直接跳过
-          if [[ -z "${GH_VAULT_DIR_NAME}" ]]; then
-            echo "[WARN]  GH_VAULT_DIR_NAME 为空，跳过 Vault 清理"
-            exit 0
-          fi
-
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
 
           if [[ -d "${VAULT_DIR}" ]]; then
-            # 二次校验：确保只删除 GITHUB_WORKSPACE 内的目录
             RESOLVED=$(realpath -m "${VAULT_DIR}")
             WORKSPACE_RESOLVED=$(realpath "${GITHUB_WORKSPACE}")
             if [[ "${RESOLVED}/" == "${WORKSPACE_RESOLVED}/"* ]]; then
