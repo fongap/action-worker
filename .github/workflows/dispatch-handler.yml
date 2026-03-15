@@ -3,40 +3,6 @@
 # 用途：监听 repository_dispatch 事件，从 internal repo 拉取
 #       脚本后按 task.json 声明顺序执行各原子任务，完成后
 #       强制清除脚本目录防止源码泄露
-# ------------------------------------------------------------
-# 触发方式：repository_dispatch（event_type: deploy）
-# 依赖 Secrets：
-#   GH_SOURCE_VAULT_PAT    - 拉取 internal repo 的 PAT
-#   GH_SOURCE_VAULT_REPO   - internal repo 路径（owner/repo）
-#   GH_VAULT_DIR_NAME      - 本地脱敏目录名
-#   CF_ACCOUNT_ID          - Cloudflare 账户 ID
-#   CF_PAGES_WRITE_TOKEN   - Cloudflare Pages 写入令牌
-#   CF_WORKERS_WRITE_TOKEN - Cloudflare Workers 写入令牌
-#   CF_TURNSTILE_SECRET_KEY - Cloudflare Turnstile 密钥
-#   ALGOLIA_APP_ID         - Algolia 应用 ID
-#   ALGOLIA_WRITE_KEY      - Algolia 写入密钥
-#   ENS_ADMIN_TOKEN        - ENS 管理员令牌
-#   ENS_WEBHOOK_SECRET     - ENS Webhook 签名密钥
-#   RESEND_API_KEY         - 邮件服务密钥
-# 依赖 vars（可选覆盖）：
-#   HUGO_VERSION / NODE_VERSION / WRANGLER_VERSION
-#   CF_PAGES_PROJECT_NAME / CF_WORKERS_SCRIPT_NAME
-#   ALGOLIA_INDEX_NAME / DEPLOY_BRANCH / CF_PRUNE_KEEP_COUNT
-# 并发控制：同 group 新触发取消旧执行，防止队列堆积
-# 工具安装策略：
-#   · Workflow 层只负责缓存恢复，不执行任何工具安装
-#   · 工具安装完全由各原子脚本内的 install_* 函数按需负责
-#   · install_* 函数内置版本比对，缓存命中时几乎零开销
-# PATH 策略：
-#   · ~/.local/bin 注册由 bootstrap.sh 在 source 时完成
-#   · 使用 export PATH 直接生效，无需独立 workflow step
-#   · actions/setup-node / actions/cache 必须保留在 workflow 层
-#     （依赖 runner pre/post hook，shell 脚本无法替代）
-# 安全机制：
-#   · Payload 路径字段经严格白名单前缀校验，禁止目录穿越
-#   · 全程启用 set -euo pipefail，子命令失败立即中断
-#   · 全程禁用 set -x，敏感变量不落入 Actions Logs
-#   · 脚本目录在 always() 步骤中强制清除
 # ============================================================
 
 name: Dispatch Handler
@@ -56,7 +22,7 @@ jobs:
     timeout-minutes: 30
 
     env:
-      # ── Secrets（在所有 steps 中可用，值在 Logs 中自动遮蔽）────
+      # ── Secrets ──────────────────────────────────────────────
       GH_VAULT_DIR_NAME: ${{ secrets.GH_VAULT_DIR_NAME }}
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_PAGES_WRITE_TOKEN: ${{ secrets.CF_PAGES_WRITE_TOKEN }}
@@ -67,14 +33,12 @@ jobs:
       ENS_ADMIN_TOKEN: ${{ secrets.ENS_ADMIN_TOKEN }}
       ENS_WEBHOOK_SECRET: ${{ secrets.ENS_WEBHOOK_SECRET }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      # ── 目标项目信息（来自 Payload）────────────────────────
+      TARGET_PROJECT: ${{ github.event.client_payload.project_path }}
       # ── 派生路径 ──────────────────────────────────────────────
-      # VAULT_DIR  = <workspace>/<GH_VAULT_DIR_NAME>  ← 私密仓库根
-      # SCRIPTS_DIR= <VAULT_DIR>/scripts              ← 共享脚本目录
-      # task.json  = <workspace>/task.json            ← 当前项目仓库根
-      HUGO_PROJECT_DIR: ${{ github.workspace }}
+      HUGO_PROJECT_DIR: ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ github.event.client_payload.project_path }}
       HUGO_CACHE_DIR: ${{ github.workspace }}/.hugo-module-cache
       # ── 版本（vars 覆盖 > versions.env > bootstrap.sh 兜底）─
-      # 仅用于缓存 key 计算，实际安装版本由 bootstrap.sh 决定
       HUGO_VERSION: ${{ vars.HUGO_VERSION || '0.157.0' }}
       NODE_VERSION: ${{ vars.NODE_VERSION || '20.19.1' }}
       WRANGLER_VERSION: ${{ vars.WRANGLER_VERSION || '3.114.0' }}
@@ -92,6 +56,7 @@ jobs:
           set -euo pipefail
           echo "[INFO]  Dispatch 触发：ref=${{ github.event.client_payload.ref || 'N/A' }}"
           echo "[INFO]  Commit SHA：${{ github.event.client_payload.sha || 'N/A' }}"
+          echo "[INFO]  目标项目：${{ env.TARGET_PROJECT }}"
 
           _validate_field() {
             local field_name="$1"
@@ -104,17 +69,15 @@ jobs:
 
           _validate_field "ref" "${{ github.event.client_payload.ref || '' }}"
           _validate_field "sha" "${{ github.event.client_payload.sha || '' }}"
+          _validate_field "project_path" "${{ env.TARGET_PROJECT }}"
 
           echo "[INFO]  Payload 校验通过"
 
-      # ── 2. 检出当前项目仓库 ───────────────────────────────────
-      # 使 task.json / go.sum 出现在 github.workspace 根目录
+      # ── 2. 检出 action-worker 仓库 ────────────────────────────
       - name: Checkout project repository
         uses: actions/checkout@v4
 
       # ── 3. 配置 Node.js ──────────────────────────────────────
-      # 由 actions/setup-node 管理 Node 版本，供 npm install -g 使用
-      # 必须保留在 workflow 层，shell 脚本无法替代此 action
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
@@ -161,13 +124,18 @@ jobs:
           echo "[INFO]  Vault 克隆完成"
 
       # ── 5. 校验目录结构 ───────────────────────────────────────
-      # scripts/ 在私密仓库根目录；task.json 在当前项目仓库根目录
       - name: Validate directory structure
         run: |
           set -euo pipefail
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
           SCRIPTS_DIR="${VAULT_DIR}/scripts"
-          TASK_FILE="${GITHUB_WORKSPACE}/task.json"
+          PROJECT_DIR="${VAULT_DIR}/${TARGET_PROJECT}"
+          TASK_FILE="${PROJECT_DIR}/task.json"
+
+          if [[ ! -d "${PROJECT_DIR}" ]]; then
+            echo "[ERROR] 目标项目目录不存在：${PROJECT_DIR}" >&2
+            exit 1
+          fi
 
           for path in "${SCRIPTS_DIR}" "${SCRIPTS_DIR}/bootstrap.sh" "${TASK_FILE}"; do
             if [[ ! -e "${path}" ]]; then
@@ -185,8 +153,6 @@ jobs:
           echo "[INFO]  目录校验通过：${TASK_COUNT} 个任务待执行"
 
       # ── 6. 缓存恢复：Hugo 二进制 ──────────────────────────────
-      # 仅恢复缓存，安装由 hugo-build.sh 内的 install_hugo() 负责
-      # 必须保留在 workflow 层，actions/cache 依赖 runner post-hook 回写缓存
       - name: Restore Hugo binary cache
         uses: actions/cache@v4
         with:
@@ -194,8 +160,6 @@ jobs:
           key: hugo-${{ env.HUGO_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       # ── 7. 缓存恢复：npm 全局包（含 Wrangler）────────────────
-      # 仅恢复缓存，安装由 cfp-deploy.sh / cfw-deploy.sh 内的
-      # install_wrangler() 负责
       - name: Restore npm global cache
         uses: actions/cache@v4
         with:
@@ -204,23 +168,21 @@ jobs:
           restore-keys: |
             npm-global-wrangler-${{ env.WRANGLER_VERSION }}-
 
-      # ── 8. 缓存恢复：Hugo 模块（go.sum 位于当前项目仓库根）──
+      # ── 8. 缓存恢复：Hugo 模块 ────────────────────────────────
       - name: Restore Hugo module cache
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.hugo-module-cache
-          key: hugo-modules-${{ hashFiles('go.sum') }}-${{ env.HUGO_VERSION }}
+          key: hugo-modules-${{ hashFiles(format('{0}/{1}/go.sum', env.GH_VAULT_DIR_NAME, env.TARGET_PROJECT)) }}-${{ env.HUGO_VERSION }}
           restore-keys: |
             hugo-modules-
 
       # ── 9. 执行任务 ───────────────────────────────────────────
-      # scripts/ 来自 vault；task.json 来自当前项目仓库
-      # bootstrap.sh 负责：PATH 注册（export PATH）、日志函数、validate_path
       - name: Execute tasks from task.json
         run: |
           set -euo pipefail
           export SCRIPTS_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/scripts"
-          TASK_FILE="${GITHUB_WORKSPACE}/task.json"
+          TASK_FILE="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/${TARGET_PROJECT}/task.json"
 
           # source bootstrap.sh：注册 PATH、加载公共函数
           source "${SCRIPTS_DIR}/bootstrap.sh"
@@ -248,7 +210,7 @@ jobs:
 
           log_info "═══ 全部任务执行完毕 ═══"
 
-      # ── 10. 强制清理 Vault（always，防止源码泄露）────────────
+      # ── 10. 强制清理 Vault ────────────────────────────────────
       - name: Cleanup vault directory
         if: always()
         run: |
