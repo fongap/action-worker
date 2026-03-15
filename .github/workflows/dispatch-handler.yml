@@ -1,14 +1,14 @@
 # ============================================================
 # 文件：.github/workflows/dispatch-handler.yml
 # 用途：监听 repository_dispatch 事件，从 internal repo 拉取
-#       脚本后按 task.json 声明顺序执行各原子任务，完成后
-#       强制清除脚本目录防止源码泄露
+#       配置与脚本，按 task.json 数据驱动执行原子部署任务，完
+#       成后强制清除脚本目录防止源码泄露
 # ============================================================
 name: Dispatch Handler
 
 on:
   repository_dispatch:
-    types: [deploy]
+    types: [Task Executor]
 
 concurrency:
   group: deploy-${{ github.event.client_payload.ref || github.run_id }}
@@ -93,7 +93,6 @@ jobs:
           export CF_PAGES_PROJECT_NAME="${PROJECT_NAME}"
           export CF_WORKERS_PROJECT_NAME="${PROJECT_NAME}"
           export CF_WORKERS_SCRIPT_NAME="${PROJECT_NAME}"
-          export ALGOLIA_INDEX_NAME="${PROJECT_NAME}"
           export SCRIPTS_DIR
 
           # 加载运行环境函数库
