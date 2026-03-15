@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   run-tasks:
-    name: "[${{ github.event.client_payload.project_path }}] Run Tasks"
+    name: "[${{ secrets.GH_VAULT_DIR_NAME }}] Run Tasks"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
