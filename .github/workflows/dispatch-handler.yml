@@ -3,7 +3,7 @@
 # 用途：监听 repository_dispatch 事件，从 internal repo 拉取
 #       配置与脚本，按 task.json 数据驱动执行原子部署任务，完
 #       成后强制清除脚本目录防止源码泄露
-# ============================================================
+# ============================================================   
 name: Dispatch Handler
 
 on:
@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   run-tasks:
-    name: "[${{ secrets.GH_VAULT_DIR_NAME }}] Run Tasks"
+    name: "[${{ github.event.client_payload.project_name }}] Run Tasks"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 30    
 
     env:
       GH_VAULT_DIR_NAME: ${{ secrets.GH_VAULT_DIR_NAME }}
