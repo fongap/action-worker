@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   run-tasks:
-    name: "[${{ github.event.client_payload.project_name }}] Run Tasks"
+    name: "[${{ github.event.client_payload.project_name || github.event.client_payload.project_path }}] Run Tasks"
     runs-on: ubuntu-latest
     timeout-minutes: 30    
 
