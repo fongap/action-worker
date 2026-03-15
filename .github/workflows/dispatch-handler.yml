@@ -27,8 +27,14 @@
 #   · Workflow 层只负责缓存恢复，不执行任何工具安装
 #   · 工具安装完全由各原子脚本内的 install_* 函数按需负责
 #   · install_* 函数内置版本比对，缓存命中时几乎零开销
+# PATH 策略：
+#   · ~/.local/bin 注册由 bootstrap.sh 在 source 时完成
+#   · 使用 export PATH 直接生效，无需独立 workflow step
+#   · actions/setup-node / actions/cache 必须保留在 workflow 层
+#     （依赖 runner pre/post hook，shell 脚本无法替代）
 # 安全机制：
 #   · Payload 路径字段经严格白名单前缀校验，禁止目录穿越
+#   · 全程启用 set -euo pipefail，子命令失败立即中断
 #   · 全程禁用 set -x，敏感变量不落入 Actions Logs
 #   · 脚本目录在 always() 步骤中强制清除
 # ============================================================
@@ -83,6 +89,7 @@ jobs:
       # ── 1. Payload 安全校验 ───────────────────────────────────
       - name: Validate dispatch payload
         run: |
+          set -euo pipefail
           echo "[INFO]  Dispatch 触发：ref=${{ github.event.client_payload.ref || 'N/A' }}"
           echo "[INFO]  Commit SHA：${{ github.event.client_payload.sha || 'N/A' }}"
 
@@ -101,12 +108,13 @@ jobs:
           echo "[INFO]  Payload 校验通过"
 
       # ── 2. 检出当前项目仓库 ───────────────────────────────────
-      # 使 task.json 出现在 github.workspace 根目录
+      # 使 task.json / go.sum 出现在 github.workspace 根目录
       - name: Checkout project repository
         uses: actions/checkout@v4
 
       # ── 3. 配置 Node.js ──────────────────────────────────────
       # 由 actions/setup-node 管理 Node 版本，供 npm install -g 使用
+      # 必须保留在 workflow 层，shell 脚本无法替代此 action
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
@@ -118,6 +126,7 @@ jobs:
           GH_SOURCE_VAULT_PAT: ${{ secrets.GH_SOURCE_VAULT_PAT }}
           GH_SOURCE_VAULT_REPO: ${{ secrets.GH_SOURCE_VAULT_REPO }}
         run: |
+          set -euo pipefail
           if printf '%s' "${GH_VAULT_DIR_NAME}" | grep -qE '[/\\;&|`$\(\)<>\s]|(\.\.)'; then
             echo "[ERROR] GH_VAULT_DIR_NAME 含非法字符，终止执行" >&2
             exit 1
@@ -155,6 +164,7 @@ jobs:
       # scripts/ 在私密仓库根目录；task.json 在当前项目仓库根目录
       - name: Validate directory structure
         run: |
+          set -euo pipefail
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
           SCRIPTS_DIR="${VAULT_DIR}/scripts"
           TASK_FILE="${GITHUB_WORKSPACE}/task.json"
@@ -176,6 +186,7 @@ jobs:
 
       # ── 6. 缓存恢复：Hugo 二进制 ──────────────────────────────
       # 仅恢复缓存，安装由 hugo-build.sh 内的 install_hugo() 负责
+      # 必须保留在 workflow 层，actions/cache 依赖 runner post-hook 回写缓存
       - name: Restore Hugo binary cache
         uses: actions/cache@v4
         with:
@@ -202,21 +213,16 @@ jobs:
           restore-keys: |
             hugo-modules-
 
-      # ── 9. 注册 ~/.local/bin 到 PATH ─────────────────────────
-      # 使缓存恢复的二进制（hugo 等）对后续所有 step 可见
-      - name: Add local bin to PATH
-        run: echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-
-      # ── 10. 执行任务 ──────────────────────────────────────────
+      # ── 9. 执行任务 ───────────────────────────────────────────
       # scripts/ 来自 vault；task.json 来自当前项目仓库
+      # bootstrap.sh 负责：PATH 注册（export PATH）、日志函数、validate_path
       - name: Execute tasks from task.json
         run: |
-          VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
-          SCRIPTS_DIR="${VAULT_DIR}/scripts"
+          set -euo pipefail
+          export SCRIPTS_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/scripts"
           TASK_FILE="${GITHUB_WORKSPACE}/task.json"
 
-          export SCRIPTS_DIR
-
+          # source bootstrap.sh：注册 PATH、加载公共函数
           source "${SCRIPTS_DIR}/bootstrap.sh"
 
           log_info "═══ 开始执行任务序列 ═══"
@@ -242,10 +248,11 @@ jobs:
 
           log_info "═══ 全部任务执行完毕 ═══"
 
-      # ── 11. 强制清理 Vault（always，防止源码泄露）────────────
+      # ── 10. 强制清理 Vault（always，防止源码泄露）────────────
       - name: Cleanup vault directory
         if: always()
         run: |
+          set -euo pipefail
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
 
           if [[ -d "${VAULT_DIR}" ]]; then
