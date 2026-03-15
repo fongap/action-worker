@@ -73,6 +73,7 @@ jobs:
           CF_PAGES_WRITE_TOKEN: ${{ secrets.CF_PAGES_WRITE_TOKEN }}
           CF_WORKERS_WRITE_TOKEN: ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
           ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_INDEX_NAME: ${{ secrets.ALGOLIA_INDEX_NAME }}
           ALGOLIA_WRITE_KEY: ${{ secrets.ALGOLIA_WRITE_KEY }}
           # 核心派生变量映射
           HUGO_PROJECT_DIR: ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ env.TARGET_PROJECT }}
