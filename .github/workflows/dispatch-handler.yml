@@ -4,7 +4,6 @@
 #       脚本后按 task.json 声明顺序执行各原子任务，完成后
 #       强制清除脚本目录防止源码泄露
 # ============================================================
-
 name: Dispatch Handler
 
 on:
@@ -16,225 +15,127 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Execute deployment tasks
+  run-tasks:
+    name: "[${{ github.event.client_payload.project_path }}] Run Tasks"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     env:
-      # ── Secrets ──────────────────────────────────────────────
       GH_VAULT_DIR_NAME: ${{ secrets.GH_VAULT_DIR_NAME }}
-      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-      CF_PAGES_WRITE_TOKEN: ${{ secrets.CF_PAGES_WRITE_TOKEN }}
-      CF_WORKERS_WRITE_TOKEN: ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
-      CF_TURNSTILE_SECRET_KEY: ${{ secrets.CF_TURNSTILE_SECRET_KEY }}
-      ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
-      ALGOLIA_WRITE_KEY: ${{ secrets.ALGOLIA_WRITE_KEY }}
-      ENS_ADMIN_TOKEN: ${{ secrets.ENS_ADMIN_TOKEN }}
-      ENS_WEBHOOK_SECRET: ${{ secrets.ENS_WEBHOOK_SECRET }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      # ── 目标项目信息（来自 Payload）────────────────────────
       TARGET_PROJECT: ${{ github.event.client_payload.project_path }}
-      # ── 派生路径 ──────────────────────────────────────────────
-      HUGO_PROJECT_DIR: ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ github.event.client_payload.project_path }}
-      HUGO_CACHE_DIR: ${{ github.workspace }}/.hugo-module-cache
-      # ── 版本（vars 覆盖 > versions.env > bootstrap.sh 兜底）─
-      HUGO_VERSION: ${{ vars.HUGO_VERSION || '0.157.0' }}
-      NODE_VERSION: ${{ vars.NODE_VERSION || '20.19.1' }}
-      WRANGLER_VERSION: ${{ vars.WRANGLER_VERSION || '3.114.0' }}
-      # ── 站点配置（来自 vars）─────────────────────────────────
-      # 注：核心动态变量已下移至执行阶段基于 PROJECT_NAME 进行派生
-      ALGOLIA_INDEX_NAME: ${{ vars.ALGOLIA_INDEX_NAME || '' }}
-      DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH || 'production' }}
-      CF_PRUNE_KEEP_COUNT: ${{ vars.CF_PRUNE_KEEP_COUNT || '10' }}
 
     steps:
-      # ── 1. Payload 安全校验 ───────────────────────────────────
-      - name: Validate dispatch payload
-        run: |
-          set -euo pipefail
-          echo "[INFO]  Dispatch 触发：ref=${{ github.event.client_payload.ref || 'N/A' }}"
-          echo "[INFO]  Commit SHA：${{ github.event.client_payload.sha || 'N/A' }}"
-          echo "[INFO]  目标项目：${{ env.TARGET_PROJECT }}"
-
-          _validate_field() {
-            local field_name="$1"
-            local field_value="$2"
-            if printf '%s' "${field_value}" | grep -qE '[;&|`$\(\)<>]|(\.\.)'; then
-              echo "[ERROR] Payload 字段 '${field_name}' 含非法字符：${field_value}" >&2
-              exit 1
-            fi
-          }
-
-          _validate_field "ref" "${{ github.event.client_payload.ref || '' }}"
-          _validate_field "sha" "${{ github.event.client_payload.sha || '' }}"
-          _validate_field "project_path" "${{ env.TARGET_PROJECT }}"
-
-          echo "[INFO]  Payload 校验通过"
-
-      # ── 2. 检出 action-worker 仓库 ────────────────────────────
-      - name: Checkout project repository
+      # ── 1. 检出 public 仓库（获取 actions/cache 等所需上下文）──
+      - name: Checkout public repo
         uses: actions/checkout@v4
 
-      # ── 3. 配置 Node.js ──────────────────────────────────────
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
+      # ── 2. 拉取私密仓（脚本与项目配置来源）──────────────────
+      - name: Checkout internal (vault)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
+          token: ${{ secrets.GH_SOURCE_VAULT_PAT }}
+          path: ${{ secrets.GH_VAULT_DIR_NAME }}
+          ref: ${{ github.event.client_payload.sha || 'main' }}
+
+      # ── 3. 注入全局版本变量 ────────────────────────────────────
+      - name: Load versions.env
+        run: |
+          set -euo pipefail
+          VERSIONS_FILE="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/scripts/versions.env"
+          if [[ -f "${VERSIONS_FILE}" ]]; then
+            grep -v '^\s*#' "${VERSIONS_FILE}" | grep -v '^\s*$' >> "$GITHUB_ENV"
+          fi
+
+      # ── 4. 准备基础环境（Node & Caches）──────────────────────
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ env.NODE_VERSION || '20.19.1' }}
 
-      # ── 4. 拉取 internal repo（vault）────────────────────────
-      - name: Clone vault repo
+      - name: Restore Hugo & npm caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/hugo
+            ~/.npm
+            ${{ github.workspace }}/.hugo-module-cache
+          key: build-cache-${{ runner.os }}-${{ hashFiles(format('{0}/{1}/go.sum', env.GH_VAULT_DIR_NAME, env.TARGET_PROJECT)) }}
+          restore-keys: |
+            build-cache-${{ runner.os }}-
+
+      # ── 5. 串行执行 task.json 声明的任务 ──────────────────────
+      - name: Run tasks
         env:
-          GH_SOURCE_VAULT_PAT: ${{ secrets.GH_SOURCE_VAULT_PAT }}
-          GH_SOURCE_VAULT_REPO: ${{ secrets.GH_SOURCE_VAULT_REPO }}
+          # Secrets
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_PAGES_WRITE_TOKEN: ${{ secrets.CF_PAGES_WRITE_TOKEN }}
+          CF_WORKERS_WRITE_TOKEN: ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
+          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_WRITE_KEY: ${{ secrets.ALGOLIA_WRITE_KEY }}
+          # 核心派生变量映射
+          HUGO_PROJECT_DIR: ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ env.TARGET_PROJECT }}
+          HUGO_CACHE_DIR: ${{ github.workspace }}/.hugo-module-cache
         run: |
           set -euo pipefail
-          if printf '%s' "${GH_VAULT_DIR_NAME}" | grep -qE '[/\\;&|`$\(\)<>\s]|(\.\.)'; then
-            echo "[ERROR] GH_VAULT_DIR_NAME 含非法字符，终止执行" >&2
-            exit 1
-          fi
 
-          CLONE_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
-
-          RESOLVED=$(realpath -m "${CLONE_DIR}")
-          WORKSPACE_RESOLVED=$(realpath "${GITHUB_WORKSPACE}")
-          if [[ "${RESOLVED}/" != "${WORKSPACE_RESOLVED}/"* ]]; then
-            echo "[ERROR] 克隆目录超出工作区范围：${RESOLVED}" >&2
-            exit 1
-          fi
-
-          DEPLOY_SHA="${{ github.event.client_payload.sha }}"
-
-          echo "[INFO]  克隆 internal repo → ${CLONE_DIR}"
-          git clone --depth 1 \
-            "https://x-access-token:${GH_SOURCE_VAULT_PAT}@github.com/${GH_SOURCE_VAULT_REPO}.git" \
-            "${CLONE_DIR}"
-
-          if [[ -n "${DEPLOY_SHA}" ]]; then
-            pushd "${CLONE_DIR}" > /dev/null
-            git fetch --depth 1 \
-              "https://x-access-token:${GH_SOURCE_VAULT_PAT}@github.com/${GH_SOURCE_VAULT_REPO}.git" \
-              "${DEPLOY_SHA}" 2>/dev/null || \
-              echo "[WARN]  无法精确检出 SHA ${DEPLOY_SHA}，使用 HEAD"
-            git checkout "${DEPLOY_SHA}" 2>/dev/null || true
-            popd > /dev/null
-          fi
-
-          echo "[INFO]  Vault 克隆完成"
-
-      # ── 5. 校验目录结构 ───────────────────────────────────────
-      - name: Validate directory structure
-        run: |
-          set -euo pipefail
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
           SCRIPTS_DIR="${VAULT_DIR}/scripts"
-          PROJECT_DIR="${VAULT_DIR}/${TARGET_PROJECT}"
-          TASK_FILE="${PROJECT_DIR}/task.json"
+          TASK_FILE="${VAULT_DIR}/${TARGET_PROJECT}/task.json"
 
-          if [[ ! -d "${PROJECT_DIR}" ]]; then
-            echo "[ERROR] 目标项目目录不存在：${PROJECT_DIR}" >&2
+          if [[ ! -f "${TASK_FILE}" ]]; then
+            echo "::error::task.json 未找到: ${TASK_FILE}"
             exit 1
           fi
 
-          for path in "${SCRIPTS_DIR}" "${SCRIPTS_DIR}/bootstrap.sh" "${TASK_FILE}"; do
-            if [[ ! -e "${path}" ]]; then
-              echo "[ERROR] 路径不存在：${path}" >&2
-              exit 1
-            fi
-          done
-
-          if ! jq -e '.tasks | type == "array"' "${TASK_FILE}" > /dev/null 2>&1; then
-            echo "[ERROR] task.json 格式非法，无法解析 .tasks 数组" >&2
-            exit 1
-          fi
-
-          TASK_COUNT=$(jq '.tasks | length' "${TASK_FILE}")
-          echo "[INFO]  目录校验通过：${TASK_COUNT} 个任务待执行"
-
-      # ── 6. 缓存恢复：Hugo 二进制 ──────────────────────────────
-      - name: Restore Hugo binary cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/hugo
-          key: hugo-${{ env.HUGO_VERSION }}-${{ runner.os }}-${{ runner.arch }}
-
-      # ── 7. 缓存恢复：npm 全局包（含 Wrangler）────────────────
-      - name: Restore npm global cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-global-wrangler-${{ env.WRANGLER_VERSION }}-node-${{ env.NODE_VERSION }}
-          restore-keys: |
-            npm-global-wrangler-${{ env.WRANGLER_VERSION }}-
-
-      # ── 8. 缓存恢复：Hugo 模块 ────────────────────────────────
-      - name: Restore Hugo module cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.hugo-module-cache
-          key: hugo-modules-${{ hashFiles(format('{0}/{1}/go.sum', env.GH_VAULT_DIR_NAME, env.TARGET_PROJECT)) }}-${{ env.HUGO_VERSION }}
-          restore-keys: |
-            hugo-modules-
-
-      # ── 9. 执行任务 ───────────────────────────────────────────
-      - name: Execute tasks from task.json
-        run: |
-          set -euo pipefail
-          export SCRIPTS_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/scripts"
-          TASK_FILE="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/${TARGET_PROJECT}/task.json"
-
-          # ── 1. 动态提取通用项目名称（唯一事实来源） ──
-          export PROJECT_NAME=$(echo "${TARGET_PROJECT}" | sed -E 's/^Project-//i' | tr '[:upper:]' '[:lower:]')
-          echo "[INFO]  通用项目名称解析完毕：PROJECT_NAME=${PROJECT_NAME}"
-
-          # ── 2. 向下游特定工具/脚本的环境变量按需赋值 ──
+          # 动态提取通用项目名称并赋值
+          PROJECT_NAME=$(echo "${TARGET_PROJECT}" | sed -E 's/^Project-//i' | tr '[:upper:]' '[:lower:]')
           export CF_PAGES_PROJECT_NAME="${PROJECT_NAME}"
           export CF_WORKERS_PROJECT_NAME="${PROJECT_NAME}"
           export CF_WORKERS_SCRIPT_NAME="${PROJECT_NAME}"
+          export ALGOLIA_INDEX_NAME="${PROJECT_NAME}"
+          export SCRIPTS_DIR
 
-          # ── 3. 注册路径与公共函数 ──
+          # 加载运行环境函数库
           source "${SCRIPTS_DIR}/bootstrap.sh"
 
-          log_info "═══ 开始执行任务序列 ═══"
+          echo "::group::📜 任务队列"
+          jq -r '.[].id' "${TASK_FILE}" || jq -r '.tasks[].id' "${TASK_FILE}"
+          echo "::endgroup::"
 
+          # 根据 task.json 执行原子脚本
           while IFS= read -r task_id; do
             [[ -z "${task_id}" || "${task_id}" == \#* ]] && continue
 
-            script_path="${SCRIPTS_DIR}/${task_id}.sh"
-            resolved_script=$(validate_path "${script_path}" "${SCRIPTS_DIR}")
-
-            if [[ ! -f "${resolved_script}" ]]; then
-              log_error "任务脚本不存在：${resolved_script}（task_id=${task_id}）"
+            script="${SCRIPTS_DIR}/${task_id}.sh"
+            if [[ ! -f "${script}" ]]; then
+              echo "::error::脚本未找到: ${script}"
               exit 1
             fi
 
-            [[ ! -x "${resolved_script}" ]] && chmod +x "${resolved_script}"
+            [[ ! -x "${script}" ]] && chmod +x "${script}"
 
-            log_info "─── 执行任务：${task_id} ───"
-            bash "${resolved_script}"
-            log_info "─── 任务完成：${task_id} ───"
+            echo "::group::▶ 执行任务: ${task_id}"
+            bash "${script}"
+            echo "::endgroup::"
 
-          done < <(jq -r '.tasks[].id' "${TASK_FILE}")
+          # 兼容处理 task.json 直接为数组或包含 tasks 对象的格式
+          done < <(jq -r 'if type=="array" then .[].id else .tasks[].id end' "${TASK_FILE}")
 
-          log_info "═══ 全部任务执行完毕 ═══"
-
-      # ── 10. 强制清理 Vault ────────────────────────────────────
+      # ── 6. 强制清理 Vault（always，防止源码泄露）────────────
       - name: Cleanup vault directory
         if: always()
         run: |
           set -euo pipefail
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
-
           if [[ -d "${VAULT_DIR}" ]]; then
             RESOLVED=$(realpath -m "${VAULT_DIR}")
             WORKSPACE_RESOLVED=$(realpath "${GITHUB_WORKSPACE}")
             if [[ "${RESOLVED}/" == "${WORKSPACE_RESOLVED}/"* ]]; then
               rm -rf "${VAULT_DIR}"
-              echo "[INFO]  Vault 目录已清除：${VAULT_DIR}"
+              echo "Vault 目录已安全清除"
             else
-              echo "[ERROR] 拒绝删除 Workspace 外路径：${RESOLVED}" >&2
+              echo "::error::拒绝删除 Workspace 外路径: ${RESOLVED}"
               exit 1
             fi
-          else
-            echo "[INFO]  Vault 目录不存在，跳过清理"
           fi
