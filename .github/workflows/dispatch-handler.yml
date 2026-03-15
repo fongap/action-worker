@@ -140,6 +140,24 @@ jobs:
           fi
 
           echo "[INFO]  Vault 克隆完成"
+          
+      
+      # 2. 【在此处插入调试代码】
+      - name: Debug Directory Structure
+        env:
+          GH_VAULT_DIR_NAME: ${{ secrets.GH_VAULT_DIR_NAME }} # 确保调试步骤也能读取到这个变量
+        run: |
+          echo "--- GITHUB_WORKSPACE 路径 ---"
+          echo "${GITHUB_WORKSPACE}"
+          
+          echo "--- 根目录内容 (ls -F) ---"
+          ls -F "${GITHUB_WORKSPACE}"
+          
+          echo "--- 检查 Vault 目录是否存在 ---"
+          # 如果这里报错，说明变量名或目录名真的对不上
+          ls -d "${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}" || echo "错误：找不到该目录"      
+          
+          
 
       # ── 4. 校验 Vault 目录结构 ───────────────────────────────
       - name: Validate vault directory structure
