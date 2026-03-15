@@ -68,7 +68,8 @@ jobs:
       - name: Run tasks
         env:
           # Secrets
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}            # 供底层 Bash 脚本校验使用
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}    # 供 Wrangler 使用，消除警告
           CF_PAGES_WRITE_TOKEN: ${{ secrets.CF_PAGES_WRITE_TOKEN }}
           CF_WORKERS_WRITE_TOKEN: ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
           ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
