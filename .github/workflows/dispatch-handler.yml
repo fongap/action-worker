@@ -13,6 +13,10 @@ on:
   repository_dispatch:
     types: [run-tasks]
 
+# 允许 github-actions 向本仓库推送提交
+permissions:
+  contents: write
+
 # 调度策略：同项目同分支互斥（自动取消旧任务），跨项目支持并行
 concurrency:
   group: deploy-${{ github.event.client_payload.project_path }}-${{ github.event.client_payload.ref || github.run_id }}
@@ -80,13 +84,13 @@ jobs:
           CF_WORKERS_WRITE_TOKEN:  ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
           CF_TURNSTILE_SECRET_KEY: ${{ secrets.CF_TURNSTILE_SECRET_KEY }}
           ALGOLIA_APP_ID:          ${{ secrets.ALGOLIA_APP_ID }}
-          ALGOLIA_WRITE_KEY:       ${{ secrets.ALGOLIA_WRITE_KEY }}	  
+          ALGOLIA_WRITE_KEY:       ${{ secrets.ALGOLIA_WRITE_KEY }}
           ALGOLIA_INDEX_NAME:      ${{ secrets.ALGOLIA_INDEX_NAME }}
           ENS_RESEND_KEY:          ${{ secrets.ENS_RESEND_KEY }}
           ENS_ADMIN_TOKEN:         ${{ secrets.ENS_ADMIN_TOKEN }}
-          ENS_GH_READ_TOKEN:       ${{ secrets.ENS_GH_READ_TOKEN }}          
+          ENS_GH_READ_TOKEN:       ${{ secrets.ENS_GH_READ_TOKEN }}
           ENS_WEBHOOK_SECRET:      ${{ secrets.ENS_WEBHOOK_SECRET }}
-          
+
           # 运行时上下文
           PROJECT_DIR:    ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ github.event.client_payload.project_path }}
           HUGO_CACHE_DIR: ${{ github.workspace }}/.hugo-module-cache
@@ -147,7 +151,7 @@ jobs:
           fi
 
       # 8. 自动更新 README.md 构建时间 badge
-      - name: Update README build time badge
+      - name: Update README
         if: success()
         run: |
           set -euo pipefail
