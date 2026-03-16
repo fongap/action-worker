@@ -79,11 +79,9 @@ jobs:
           CF_PAGES_WRITE_TOKEN:    ${{ secrets.CF_PAGES_WRITE_TOKEN }}
           CF_WORKERS_WRITE_TOKEN:  ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
           CF_TURNSTILE_SECRET_KEY: ${{ secrets.CF_TURNSTILE_SECRET_KEY }}
-	  
           ALGOLIA_APP_ID:          ${{ secrets.ALGOLIA_APP_ID }}
           ALGOLIA_WRITE_KEY:       ${{ secrets.ALGOLIA_WRITE_KEY }}	  
           ALGOLIA_INDEX_NAME:      ${{ secrets.ALGOLIA_INDEX_NAME }}
-
           ENS_RESEND_KEY:          ${{ secrets.ENS_RESEND_KEY }}
           ENS_ADMIN_TOKEN:         ${{ secrets.ENS_ADMIN_TOKEN }}
           ENS_GH_READ_TOKEN:       ${{ secrets.ENS_GH_READ_TOKEN }}          
