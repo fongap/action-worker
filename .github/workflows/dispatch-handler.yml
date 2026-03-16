@@ -1,82 +1,96 @@
 # ============================================================
-# 文件：.github/workflows/dispatch-handler.yml
-# 用途：监听 repository_dispatch 事件，从 internal repo 拉取
-#       配置与脚本，按 task.json 数据驱动执行原子部署任务，完
-#       成后强制清除脚本目录防止源码泄露
-# ============================================================   
+# 文件：dispatch-handler.yml (任务接收端)
+# 功能：响应 dispatch 事件，注入凭证并串行执行自动化任务流
+# 依赖：需在 Secrets 中配置 GH_SOURCE_VAULT_REPO, GH_SOURCE_VAULT_PAT, GH_VAULT_DIR_NAME, 
+#       CF_ACCOUNT_ID, CF_PAGES_WRITE_TOKEN, CF_WORKERS_WRITE_TOKEN, CF_TURNSTILE_SECRET_KEY
+#       ALGOLIA_APP_ID, ALGOLIA_WRITE_KEY, ALGOLIA_INDEX_NAME
+#       ENS_RESEND_KEY, ENS_ADMIN_TOKEN, ENS_GH_READ_TOKEN, ENS_WEBHOOK_SECRET
+#               
+# ============================================================
 name: Dispatch Handler
 
 on:
   repository_dispatch:
     types: [run-tasks]
 
+# 调度策略：同项目同分支互斥（自动取消旧任务），跨项目支持并行
 concurrency:
-  group: deploy-${{ github.event.client_payload.ref || github.run_id }}
+  group: deploy-${{ github.event.client_payload.project_path }}-${{ github.event.client_payload.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   run-tasks:
     name: "[${{ github.event.client_payload.project_name || github.event.client_payload.project_path }}] Run Tasks"
     runs-on: ubuntu-latest
-    timeout-minutes: 30    
+    timeout-minutes: 30
 
     env:
       GH_VAULT_DIR_NAME: ${{ secrets.GH_VAULT_DIR_NAME }}
-      TARGET_PROJECT: ${{ github.event.client_payload.project_path }}
+      TARGET_PROJECT:    ${{ github.event.client_payload.project_path }}
 
     steps:
-      # ── 1. 检出 public 仓库（获取 actions/cache 等所需上下文）──
+      # 1. 初始化运行环境
       - name: Checkout public repo
         uses: actions/checkout@v4
 
-      # ── 2. 拉取私密仓（脚本与项目配置来源）──────────────────
-      - name: Checkout internal (vault)
+      # 2. 检出私有配置仓（包含脚本与项目逻辑）
+      - name: Checkout vault repo
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
-          token: ${{ secrets.GH_SOURCE_VAULT_PAT }}
-          path: ${{ secrets.GH_VAULT_DIR_NAME }}
-          ref: ${{ github.event.client_payload.sha || 'main' }}
+          token:      ${{ secrets.GH_SOURCE_VAULT_PAT }}
+          path:       ${{ secrets.GH_VAULT_DIR_NAME }}
+          ref:        ${{ github.event.client_payload.sha || 'main' }}
 
-      # ── 3. 注入全局版本变量 ────────────────────────────────────
+      # 3. 加载版本配置（同时写入 ENV 和 Step Output 以消除时序依赖）
       - name: Load versions.env
+        id: versions
         run: |
           set -euo pipefail
           VERSIONS_FILE="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}/scripts/versions.env"
-          if [[ -f "${VERSIONS_FILE}" ]]; then
-            grep -v '^\s*#' "${VERSIONS_FILE}" | grep -v '^\s*$' >> "$GITHUB_ENV"
-          fi
+          [[ -f "${VERSIONS_FILE}" ]] || { echo "::error::versions.env 缺失: ${VERSIONS_FILE}"; exit 1; }
+          # 导出至环境变量供后续脚本读取，导出至 Output 供 Action 引用
+          grep -v '^\s*#' "${VERSIONS_FILE}" | grep -v '^\s*$' >> "$GITHUB_ENV"
+          source "${VERSIONS_FILE}"
+          echo "node_version=${NODE_VERSION}" >> "$GITHUB_OUTPUT"
 
-      # ── 4. 准备基础环境（Node & Caches）──────────────────────
+      # 4. 准备 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION || '20.19.1' }}
+          node-version: ${{ steps.versions.outputs.node_version }}
 
-      - name: Restore Hugo & npm caches
+      # 5. 挂载构建缓存（Hugo 二进制、npm 包、Hugo 模块）
+      - name: Restore caches
         uses: actions/cache@v4
         with:
           path: |
             ~/.local/bin/hugo
             ~/.npm
             ${{ github.workspace }}/.hugo-module-cache
-          key: build-cache-${{ runner.os }}-${{ hashFiles(format('{0}/{1}/go.sum', env.GH_VAULT_DIR_NAME, env.TARGET_PROJECT)) }}
-          restore-keys: |
-            build-cache-${{ runner.os }}-
+          key: build-cache-${{ runner.os }}-${{ hashFiles(format('{0}/{1}/{2}/go.sum', github.workspace, env.GH_VAULT_DIR_NAME, env.TARGET_PROJECT)) }}
+          restore-keys: build-cache-${{ runner.os }}-
 
-      # ── 5. 串行执行 task.json 声明的任务 ──────────────────────
+      # 6. 解析并顺序执行任务队列
       - name: Run tasks
         env:
-          # Secrets
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}            # 供底层 Bash 脚本校验使用
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}    # 供 Wrangler 使用，消除警告
-          CF_PAGES_WRITE_TOKEN: ${{ secrets.CF_PAGES_WRITE_TOKEN }}
-          CF_WORKERS_WRITE_TOKEN: ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
-          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
-          ALGOLIA_INDEX_NAME: ${{ secrets.ALGOLIA_INDEX_NAME }}
-          ALGOLIA_WRITE_KEY: ${{ secrets.ALGOLIA_WRITE_KEY }}
-          # 核心派生变量映射
-          HUGO_PROJECT_DIR: ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ env.TARGET_PROJECT }}
+          # 业务凭证注入
+          CLOUDFLARE_ACCOUNT_ID:   ${{ secrets.CF_ACCOUNT_ID }}
+          CF_PAGES_WRITE_TOKEN:    ${{ secrets.CF_PAGES_WRITE_TOKEN }}
+          CF_WORKERS_WRITE_TOKEN:  ${{ secrets.CF_WORKERS_WRITE_TOKEN }}
+          CF_TURNSTILE_SECRET_KEY: ${{ secrets.CF_TURNSTILE_SECRET_KEY }}
+	  
+          ALGOLIA_APP_ID:          ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_WRITE_KEY:       ${{ secrets.ALGOLIA_WRITE_KEY }}	  
+          ALGOLIA_INDEX_NAME:      ${{ secrets.ALGOLIA_INDEX_NAME }}
+
+          ENS_RESEND_KEY:          ${{ secrets.ENS_RESEND_KEY }}
+          ENS_ADMIN_TOKEN:         ${{ secrets.ENS_ADMIN_TOKEN }}
+          ENS_GH_READ_TOKEN:       ${{ secrets.ENS_GH_READ_TOKEN }}          
+          ENS_WEBHOOK_SECRET:      ${{ secrets.ENS_WEBHOOK_SECRET }}
+          
+          # 运行时上下文
+          PROJECT_DIR:    ${{ github.workspace }}/${{ secrets.GH_VAULT_DIR_NAME }}/${{ github.event.client_payload.project_path }}
           HUGO_CACHE_DIR: ${{ github.workspace }}/.hugo-module-cache
         run: |
           set -euo pipefail
@@ -85,58 +99,51 @@ jobs:
           SCRIPTS_DIR="${VAULT_DIR}/scripts"
           TASK_FILE="${VAULT_DIR}/${TARGET_PROJECT}/task.json"
 
-          if [[ ! -f "${TASK_FILE}" ]]; then
-            echo "::error::task.json 未找到: ${TASK_FILE}"
-            exit 1
-          fi
+          [[ -f "${TASK_FILE}" ]] || { echo "::error::task.json 缺失: ${TASK_FILE}"; exit 1; }
 
-          # 动态提取通用项目名称并赋值
-          PROJECT_NAME=$(echo "${TARGET_PROJECT}" | sed -E 's/^Project-//i' | tr '[:upper:]' '[:lower:]')
-          export CF_PAGES_PROJECT_NAME="${PROJECT_NAME}"
-          export CF_WORKERS_PROJECT_NAME="${PROJECT_NAME}"
-          export CF_WORKERS_SCRIPT_NAME="${PROJECT_NAME}"
-          export SCRIPTS_DIR
-
-          # 加载运行环境函数库
+          export SCRIPTS_DIR TASK_FILE
           source "${SCRIPTS_DIR}/bootstrap.sh"
 
-          echo "::group::📜 任务队列"
-          jq -r '.[].id' "${TASK_FILE}" || jq -r '.tasks[].id' "${TASK_FILE}"
+          # 兼容三种 task.json 格式：
+          #   ① 字符串数组  ["hugo-build", "cfp-deploy"]
+          #   ② 对象数组    [{"id": "hugo-build"}, ...]
+          #   ③ 包裹对象    {"tasks": [{"id": "hugo-build"}, ...]}
+          _JQ_TASKS='
+            if type == "array" then
+              if length == 0 then empty
+              elif (.[0] | type) == "string" then .[]
+              else .[].id end
+            else .tasks[].id end
+          '
+
+          echo "::group::📜 待执行任务清单"
+          jq -r "${_JQ_TASKS}" "${TASK_FILE}"
           echo "::endgroup::"
 
-          # 根据 task.json 执行原子脚本
+          # 逐项调用对应脚本
           while IFS= read -r task_id; do
-            [[ -z "${task_id}" || "${task_id}" == \#* ]] && continue
-
+            [[ -z "${task_id}" ]] && continue
             script="${SCRIPTS_DIR}/${task_id}.sh"
-            if [[ ! -f "${script}" ]]; then
-              echo "::error::脚本未找到: ${script}"
-              exit 1
-            fi
-
-            [[ ! -x "${script}" ]] && chmod +x "${script}"
-
+            [[ -f "${script}" ]] || { echo "::error::脚本缺失: ${script}"; exit 1; }
+            [[ -x "${script}" ]] || chmod +x "${script}"
             echo "::group::▶ 执行任务: ${task_id}"
             bash "${script}"
             echo "::endgroup::"
+          done < <(jq -r "${_JQ_TASKS}" "${TASK_FILE}")
 
-          # 兼容处理 task.json 直接为数组或包含 tasks 对象的格式
-          done < <(jq -r 'if type=="array" then .[].id else .tasks[].id end' "${TASK_FILE}")
-
-      # ── 6. 强制清理 Vault（always，防止源码泄露）────────────
-      - name: Cleanup vault directory
+      # 7. 敏感数据清理（无论成功与否均执行）
+      - name: Cleanup vault
         if: always()
         run: |
           set -euo pipefail
           VAULT_DIR="${GITHUB_WORKSPACE}/${GH_VAULT_DIR_NAME}"
-          if [[ -d "${VAULT_DIR}" ]]; then
-            RESOLVED=$(realpath -m "${VAULT_DIR}")
-            WORKSPACE_RESOLVED=$(realpath "${GITHUB_WORKSPACE}")
-            if [[ "${RESOLVED}/" == "${WORKSPACE_RESOLVED}/"* ]]; then
-              rm -rf "${VAULT_DIR}"
-              echo "Vault 目录已安全清除"
-            else
-              echo "::error::拒绝删除 Workspace 外路径: ${RESOLVED}"
-              exit 1
-            fi
+          [[ -d "${VAULT_DIR}" ]] || exit 0
+          # 安全校验：仅允许删除 Workspace 内部路径
+          RESOLVED=$(realpath -m "${VAULT_DIR}")
+          WORKSPACE_RESOLVED=$(realpath "${GITHUB_WORKSPACE}")
+          if [[ "${RESOLVED}/" == "${WORKSPACE_RESOLVED}/"* ]]; then
+            rm -rf "${VAULT_DIR}"
+            echo "Vault 数据已安全移除"
+          else
+            echo "::error::非法删除路径"; exit 1
           fi
