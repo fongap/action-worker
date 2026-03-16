@@ -38,11 +38,11 @@ jobs:
     steps:
       # 1. 初始化运行环境
       - name: Checkout public repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # 2. 检出私有配置仓（包含脚本与项目逻辑）
       - name: Checkout vault repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
           token:      ${{ secrets.GH_SOURCE_VAULT_PAT }}
@@ -63,13 +63,13 @@ jobs:
 
       # 4. 准备 Node.js 环境
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ steps.versions.outputs.node_version }}
 
       # 5. 挂载构建缓存（Hugo 二进制、npm 包、Hugo 模块）
       - name: Restore caches
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.local/bin/hugo
