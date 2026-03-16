@@ -101,10 +101,6 @@ jobs:
 
           export SCRIPTS_DIR TASK_FILE
           source "${SCRIPTS_DIR}/bootstrap.sh"
-          
-          echo "DEBUG PROJECT_NAME='${PROJECT_NAME:-<未设置>}'"
-          echo "DEBUG PROJECT_DIR='${PROJECT_DIR:-<未设置>}'"
-          echo "DEBUG CF_PAGES_WRITE_TOKEN='${CF_PAGES_WRITE_TOKEN:-<未设置>}'"
 
           # 兼容三种 task.json 格式：
           #   ① 字符串数组  ["hugo-build", "cfp-deploy"]
