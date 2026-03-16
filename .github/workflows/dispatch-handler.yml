@@ -158,26 +158,6 @@ jobs:
         if: success()
         run: |
           set -euo pipefail
-          BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')
-          # 构造 shields.io 静态 badge（空格→%20，冒号→%3A，连字符→--）
-          ENCODED_TIME=$(echo "${BUILD_TIME}" | sed 's/ /%20/g; s/:/%3A/g; s/-/--/g')
-          NEW_BADGE="![最近更新](https://img.shields.io/badge/最近更新-${ENCODED_TIME}-007acc?logo=git&logoColor=white)"
-          # 定位并替换包含该 badge 的整行
-          sed -i "s|!\[最近更新\](https://img\.shields\.io/.*最近更新.*)|${NEW_BADGE}|" README.md
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          if git diff --cached --quiet; then
-            echo "README.md 无变更，跳过提交"
-          else
-            git commit -m "chore: update build badge ${BUILD_TIME}"
-            git push
-          fi
-      # 8. 自动更新 README.md 构建时间 badge
-      - name: Update README
-        if: success()
-        run: |
-          set -euo pipefail
           BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')
           # 构造 shields.io 静态 badge（空格→%20，冒号→%3A，连字符→--）
           ENCODED_TIME=$(echo "${BUILD_TIME}" | sed 's/ /%20/g; s/:/%3A/g; s/-/--/g')
