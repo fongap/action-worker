@@ -176,6 +176,6 @@ jobs:
             echo "README.md 无变更，跳过提交"
           else
             # 关键：防止 Action 自身提交后再次触发工作流
-            git commit -m "chore: update build badge ${DISPLAY_TIME} [skip ci]"
+            git commit -m "update"
             git push
           fi      
