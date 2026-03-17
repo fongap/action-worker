@@ -3,10 +3,13 @@ name: Cron Dispatch Handler
 on:
   repository_dispatch:
     types: [cron-tasks]
-
+    
 concurrency:
   group: worker-${{ github.event.client_payload.project }}-${{ github.run_id }}
   cancel-in-progress: true
+  
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   execute:
@@ -20,7 +23,7 @@ jobs:
 
     steps:
       - name: Fetch Private Vault
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ secrets.GH_SOURCE_VAULT_REPO_2 }}
           token: ${{ secrets.GH_SOURCE_VAULT_PAT }}
@@ -53,9 +56,9 @@ jobs:
 
       - name: Setup Node.js
         if: env.RUNTIME == 'node'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION || '20' }}
+          node-version: ${{ env.NODE_VERSION || '22' }}
 
       - name: Setup Go
         if: env.RUNTIME == 'go'
@@ -86,7 +89,7 @@ jobs:
       # ── 4. 分发产物 (配置了 EXTERNAL_REPO 才执行) ──
       - name: Checkout External Repo
         if: env.EXTERNAL_REPO != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.EXTERNAL_REPO }}
           token: ${{ secrets.IFONGAP_PUSH_TOKEN }}
@@ -130,5 +133,6 @@ jobs:
       - name: Purge Vault
         if: always()
         run: |
+          set -euo pipefail
           VAULT_FULL_PATH="${GITHUB_WORKSPACE}/${{ env.VAULT_DIR }}"
-          [[ -d "${VAULT_FULL_PATH}" ]] && rm -rf "${VAULT_FULL_PATH}"
+          [[ -d "${VAULT_FULL_PATH}" ]] && rm -rf "${VAULT_FULL_PATH}" || true
