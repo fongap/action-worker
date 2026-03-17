@@ -37,11 +37,11 @@ jobs:
 
     steps:
       # 1. 初始化运行环境
-      - name: Checkout public repo
+      - name: Checkout Code
         uses: actions/checkout@v6
 
       # 2. 检出私有配置仓（包含脚本与项目逻辑）
-      - name: Checkout vault repo
+      - name: Fetch Vault
         uses: actions/checkout@v6
         with:
           repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
@@ -50,7 +50,7 @@ jobs:
           ref:        ${{ github.event.client_payload.sha || 'main' }}
 
       # 3. 加载版本配置（同时写入 ENV 和 Step Output 以消除时序依赖）
-      - name: Load versions.env
+      - name: Load Configs
         id: versions
         run: |
           set -euo pipefail
@@ -62,13 +62,13 @@ jobs:
           echo "node_version=${NODE_VERSION}" >> "$GITHUB_OUTPUT"
 
       # 4. 准备 Node.js 环境
-      - name: Setup Node.js
+      - name: Setup Stack
         uses: actions/setup-node@v6
         with:
           node-version: ${{ steps.versions.outputs.node_version }}
 
       # 5. 挂载构建缓存（Hugo 二进制、npm 包、Hugo 模块）
-      - name: Restore caches
+      - name: Restore Cache
         uses: actions/cache@v5
         with:
           path: |
@@ -79,7 +79,7 @@ jobs:
           restore-keys: build-cache-${{ runner.os }}-
 
       # 6. 解析并顺序执行任务队列
-      - name: Run tasks
+      - name: Execute Tasks
         env:
           # 业务凭证注入
           CLOUDFLARE_ACCOUNT_ID:   ${{ secrets.CF_ACCOUNT_ID }}
@@ -137,7 +137,7 @@ jobs:
           done < <(jq -r "${_JQ_TASKS}" "${TASK_FILE}")
 
       # 7. 敏感数据清理（无论成功与否均执行）
-      - name: Cleanup vault
+      - name: Purge Vault
         if: always()
         run: |
           set -euo pipefail
