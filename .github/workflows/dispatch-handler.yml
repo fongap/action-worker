@@ -158,18 +158,24 @@ jobs:
         if: success()
         run: |
           set -euo pipefail
-          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')
-          # 构造 shields.io 静态 badge（空格→%20，冒号→%3A，连字符→--）
-          ENCODED_DATE=$(echo "${BUILD_TIME}" | cut -d' ' -f1 | sed 's/-/--/g')
-          NEW_BADGE="![最近更新](https://img.shields.io/badge/最近更新-${ENCODED_DATE}-007acc?logo=git&logoColor=white)"
-          # 定位并替换包含该 badge 的整行
-          sed -i "s|!\[最近更新\](https://img\.shields\.io/.*最近更新.*)|${NEW_BADGE}|" README.md
+          
+          # 1. 定义时间变量
+          STAMP=$(date -d '+8 hours' +'%Y--%m--%d')
+          DISPLAY_TIME=$(date -d '+8 hours' +'%Y-%m-%d %H:%M:%S')
+          
+          # 2. 执行替换逻辑
+          sed -i "s/{{LAST_UPDATE}}/${STAMP}/g" README.md
+          sed -i "s/最近更新-[0-9]\{4\}--[0-9]\{2\}--[0-9]\{2\}-007acc/最近更新-${STAMP}-007acc/g" README.md
+          
+          # 3. Git 提交与推送
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git add README.md
+          
           if git diff --cached --quiet; then
             echo "README.md 无变更，跳过提交"
           else
-            git commit -m "chore: update build badge ${BUILD_TIME}"
+            # 关键：防止 Action 自身提交后再次触发工作流
+            git commit -m "chore: update build badge ${DISPLAY_TIME} [skip ci]"
             git push
-          fi          
+          fi      
