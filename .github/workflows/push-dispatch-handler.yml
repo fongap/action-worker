@@ -44,7 +44,7 @@ jobs:
       - name: Fetch Vault
         uses: actions/checkout@v6
         with:
-          repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
+          repository: ${{ secrets.GH_SOURCE_VAULT_REPO_1 }}
           token:      ${{ secrets.GH_SOURCE_VAULT_PAT }}
           path:       ${{ secrets.GH_VAULT_DIR_NAME }}
           ref:        ${{ github.event.client_payload.sha || 'main' }}
