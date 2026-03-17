@@ -7,7 +7,7 @@
 #       ENS_RESEND_KEY, ENS_ADMIN_TOKEN, ENS_GH_READ_TOKEN, ENS_WEBHOOK_SECRET
 #               
 # ============================================================
-name: Dispatch Handler
+name: Push Dispatch Handler
 
 on:
   repository_dispatch:
