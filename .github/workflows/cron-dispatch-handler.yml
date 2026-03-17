@@ -41,7 +41,7 @@ jobs:
           echo "ENTRYPOINT=bash run.sh" >> $GITHUB_ENV
           
           if [[ -f "${CONFIG_FILE}" ]]; then
-            echo "::notice::加载项目配置: ${CONFIG_FILE}"
+            echo "加载项目配置: ${CONFIG_FILE}"
             grep -v '^\s*#' "${CONFIG_FILE}" | grep -v '^\s*$' >> $GITHUB_ENV
           else
             echo "::warning::未找到 config.env，降级为原生 Shell 模式"
@@ -58,7 +58,7 @@ jobs:
         if: env.RUNTIME == 'node'
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION || '22' }}
+          node-version: ${{ env.NODE_VERSION || '20' }}
 
       - name: Setup Go
         if: env.RUNTIME == 'go'
@@ -124,7 +124,7 @@ jobs:
           if [[ -n "$(git status --porcelain)" ]]; then
             git commit -m "Auto-update [${{ env.PROJECT_NAME }}]: $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
             git push origin main
-            echo "::notice::成功推送到公开仓: ${EXTERNAL_REPO}"
+            echo "成功推送到公开仓"
           else
             echo "::notice::产物无变化，跳过推送"
           fi
