@@ -13,7 +13,7 @@ env:
 
 jobs:
   run-tasks:
-    name: Execute Task
+    name: "[ ${{ github.event.client_payload.project_path }} ] Task"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
