@@ -1,5 +1,4 @@
-
-name: Cron Dispatch
+name: Cron Dispatch Handler
 
 on:
   repository_dispatch:
@@ -58,32 +57,6 @@ jobs:
           grep -v '^\s*#' "${DEFAULTS}"       | grep -v '^\s*$' >> "$GITHUB_ENV"
           grep -v '^\s*#' "${PROJECT_CONFIG}" | grep -v '^\s*$' >> "$GITHUB_ENV"
 
-      # 检测运行环境
-      - name: Detect Runtime
-        run: |
-          set -euo pipefail
-
-          if [[ -n "${RUNTIME:-}" ]]; then
-            exit 0
-          fi
-
-          if   [[ -f "${PROJ_DIR}/requirements.txt" ]] \
-            || [[ -f "${PROJ_DIR}/pyproject.toml"   ]] \
-            || compgen -G "${PROJ_DIR}/*.py" > /dev/null 2>&1; then
-            detected="python"
-          elif [[ -f "${PROJ_DIR}/package.json" ]] \
-            || compgen -G "${PROJ_DIR}/*.js"  > /dev/null 2>&1 \
-            || compgen -G "${PROJ_DIR}/*.ts"  > /dev/null 2>&1; then
-            detected="node"
-          elif [[ -f "${PROJ_DIR}/go.mod" ]] \
-            || compgen -G "${PROJ_DIR}/*.go" > /dev/null 2>&1; then
-            detected="go"
-          else
-            detected="shell"
-          fi
-
-          echo "RUNTIME=${detected}" >> "$GITHUB_ENV"
-
       # 执行引导程序
       - name: Run Bootstrap
         run: |
@@ -91,56 +64,6 @@ jobs:
           BOOTSTRAP="${GITHUB_WORKSPACE}/${VAULT_DIR}/bootstrap.sh"
           [[ -f "${BOOTSTRAP}" ]] || { echo "::error::missing: ${BOOTSTRAP}"; exit 1; }
           bash "${BOOTSTRAP}" "${PROJ_DIR}"
-
-      # 执行核心任务
-      - name: Execute Tasks
-        run: |
-          set -euo pipefail
-          SCRIPTS_DIR="${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts"
-          TASK_FILE="${PROJ_DIR}/task.json"
-          cd "${PROJ_DIR}"
-
-          _JQ='
-            if type == "array" then
-              if length == 0 then empty
-              elif (.[0] | type) == "string" then .[]
-              else .[].id end
-            else .tasks[].id end
-          '
-
-          if [[ -f "${TASK_FILE}" ]]; then
-            mapfile -t task_ids < <(jq -r "${_JQ}" "${TASK_FILE}")
-
-            echo "::group::task queue"
-            printf '%s\n' "${task_ids[@]}"
-            echo "::endgroup::"
-
-            for task_id in "${task_ids[@]}"; do
-              [[ -z "${task_id}" ]] && continue
-              script="${SCRIPTS_DIR}/${task_id}.sh"
-              [[ -f "${script}" ]] || { echo "::error::missing script: ${script}"; exit 1; }
-              [[ -x "${script}" ]] || chmod +x "${script}"
-              echo "::group::▶ ${task_id}"
-              bash "${script}"
-              echo "::endgroup::"
-            done
-
-          else
-            [[ -n "${SCRIPT:-}" ]] || { echo "::error::SCRIPT undefined and no task.json"; exit 1; }
-            [[ -f "${SCRIPT}"    ]] || { echo "::error::script not found: ${SCRIPT}";      exit 1; }
-
-            case "${RUNTIME}" in
-              python) CMD=(python "${SCRIPT}") ;;
-              node)   CMD=(node   "${SCRIPT}") ;;
-              go)     CMD=(go run "${SCRIPT}") ;;
-              shell)  CMD=(bash   "${SCRIPT}") ;;
-              *) echo "::error::unsupported runtime: ${RUNTIME}"; exit 1 ;;
-            esac
-
-            echo "::group::▶ [${RUNTIME}] ${SCRIPT}"
-            "${CMD[@]}"
-            echo "::endgroup::"
-          fi
 
       # 拉取目标仓库
       - name: Checkout Target
