@@ -96,6 +96,14 @@ jobs:
           else
             echo "::notice::no changes, skipping push"
           fi
+          
+      # 清理敏感产物
+      - name: Cleanup Artifacts
+        if: always()
+        env:
+          PROJECT_DIR: ${{ env.PROJ_DIR }}
+        run: |
+          bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
 
       # 清理私密数据
       - name: Purge Vault
@@ -104,7 +112,6 @@ jobs:
           set -euo pipefail
           VAULT_PATH="${GITHUB_WORKSPACE}/${VAULT_DIR}"
           [[ -d "${VAULT_PATH}" ]] || exit 0
-
           RESOLVED=$(realpath -m "${VAULT_PATH}")
           WS=$(realpath "${GITHUB_WORKSPACE}")
           if [[ "${RESOLVED}/" == "${WS}/"* ]]; then
