@@ -100,8 +100,6 @@ jobs:
       # 清理敏感产物
       - name: Cleanup Artifacts
         if: always()
-        env:
-          PROJECT_DIR: ${{ env.PROJECT_DIR }}
         run: |
           bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
 
