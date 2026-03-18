@@ -22,7 +22,7 @@ jobs:
       PROJECT_NAME: ${{ github.event.client_payload.project }}
 
     steps:
-      - name: Fetch Private Vault
+      - name: Fetch Vault
         uses: actions/checkout@v6
         with:
           repository: ${{ secrets.GH_SOURCE_VAULT_REPO_2 }}
@@ -30,7 +30,7 @@ jobs:
           path: ${{ env.VAULT_DIR }}
 
       # ── 1. 动态加载环境配置 ──
-      - name: Load Project Config
+      - name: Load Config
         run: |
           set -euo pipefail
           PROJ_DIR="${{ env.VAULT_DIR }}/projects/${{ env.PROJECT_NAME }}"
@@ -48,26 +48,24 @@ jobs:
           fi
 
       # ── 2. 按需初始化运行时环境 ──
-      - name: Setup Python
+      - name: Setup Stack
         if: env.RUNTIME == 'python'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION || '3.10' }}
 
-      - name: Setup Node.js
         if: env.RUNTIME == 'node'
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION || '22.22.1' }}
 
-      - name: Setup Go
         if: env.RUNTIME == 'go'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '1.21' }}
 
       # ── 3. 执行核心业务逻辑 ──
-      - name: Execute Entrypoint
+      - name: Execute Tasks
         run: |
           set -euo pipefail
           PROJ_DIR="${GITHUB_WORKSPACE}/${{ env.VAULT_DIR }}/projects/${{ env.PROJECT_NAME }}"
@@ -87,7 +85,7 @@ jobs:
           echo "::endgroup::"
 
       # ── 4. 分发产物 (配置了 EXTERNAL_REPO 才执行) ──
-      - name: Checkout External Repo
+      - name: Checkout Vault
         if: env.EXTERNAL_REPO != ''
         uses: actions/checkout@v6
         with:
@@ -95,7 +93,7 @@ jobs:
           token: ${{ secrets.IFONGAP_PUSH_TOKEN }}
           path: 'external_repo_target'
 
-      - name: Sync and Push
+      - name: Sync & Push
         if: env.EXTERNAL_REPO != ''
         run: |
           set -euo pipefail
