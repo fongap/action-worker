@@ -22,9 +22,6 @@ jobs:
       TARGET_PROJECT: ${{ github.event.client_payload.project_path }}
 
     steps:
-      # 拉取项目代码
-      - name: Checkout Code
-        uses: actions/checkout@v4
 
       # 拉取配置仓库
       - name: Checkout Vault
