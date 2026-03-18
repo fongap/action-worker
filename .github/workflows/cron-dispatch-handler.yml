@@ -41,15 +41,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          PROJ_DIR=$(find "${GITHUB_WORKSPACE}/${VAULT_DIR}" \
+          PROJECT_DIR=$(find "${GITHUB_WORKSPACE}/${VAULT_DIR}" \
             -mindepth 2 -maxdepth 3 \
             -type d -name "$(basename "${PROJECT_NAME}")" \
             | head -1)
-          [[ -n "${PROJ_DIR}" ]] || { echo "::error::project dir not found: ${PROJECT_NAME}"; exit 1; }
-          echo "PROJ_DIR=${PROJ_DIR}" >> "$GITHUB_ENV"
+          [[ -n "${PROJECT_DIR}" ]] || { echo "::error::project dir not found: ${PROJECT_NAME}"; exit 1; }
+          echo "PROJECT_DIR=${PROJECT_DIR}" >> "$GITHUB_ENV"
 
           DEFAULTS="${GITHUB_WORKSPACE}/${VAULT_DIR}/defaults.env"
-          PROJECT_CONFIG="${PROJ_DIR}/config.env"
+          PROJECT_CONFIG="${PROJECT_DIR}/config.env"
 
           [[ -f "${DEFAULTS}" ]]       || { echo "::error::missing: ${DEFAULTS}";       exit 1; }
           [[ -f "${PROJECT_CONFIG}" ]] || { echo "::error::missing: ${PROJECT_CONFIG}"; exit 1; }
@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           BOOTSTRAP="${GITHUB_WORKSPACE}/${VAULT_DIR}/bootstrap.sh"
           [[ -f "${BOOTSTRAP}" ]] || { echo "::error::missing: ${BOOTSTRAP}"; exit 1; }
-          bash "${BOOTSTRAP}" "${PROJ_DIR}"
+          bash "${BOOTSTRAP}" "${PROJECT_DIR}"
 
       # 拉取目标仓库
       - name: Checkout Target
@@ -79,7 +79,7 @@ jobs:
         if: env.EXTERNAL_REPO != ''
         run: |
           set -euo pipefail
-          SRC="${PROJ_DIR}/${OUTPUT_FILE}"
+          SRC="${PROJECT_DIR}/${OUTPUT_FILE}"
           DST="_target/${FINAL_DEST_DIR}"
 
           [[ -e "${SRC}" ]] || { echo "::error::artifact not found: ${SRC}"; exit 1; }
@@ -101,7 +101,7 @@ jobs:
       - name: Cleanup Artifacts
         if: always()
         env:
-          PROJECT_DIR: ${{ env.PROJ_DIR }}
+          PROJECT_DIR: ${{ env.PROJECT_DIR }}
         run: |
           bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
 
