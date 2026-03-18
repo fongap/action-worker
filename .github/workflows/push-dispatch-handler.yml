@@ -59,7 +59,7 @@ jobs:
           source "${DEFAULTS}"
 
           if [[ -f "${PROJECT_CONFIG}" ]]; then
-            grep -v '^\s*#' "${PROJECT_CONFIG}" | grep -v '^\s*$' >> "$GITHUB_ENV"
+            grep -v '^\s*#' "${PROJECT_CONFIG}" | grep -v '^\s*$' | sed -e "s/=\([\"']\)\(.*\)\1$/=\2/" >> "$GITHUB_ENV"
             source "${PROJECT_CONFIG}"
           fi
 

@@ -55,7 +55,7 @@ jobs:
           [[ -f "${PROJECT_CONFIG}" ]] || { echo "::error::missing: ${PROJECT_CONFIG}"; exit 1; }
 
           grep -v '^\s*#' "${DEFAULTS}"       | grep -v '^\s*$' >> "$GITHUB_ENV"
-          grep -v '^\s*#' "${PROJECT_CONFIG}" | grep -v '^\s*$' >> "$GITHUB_ENV"
+          grep -v '^\s*#' "${PROJECT_CONFIG}" | grep -v '^\s*$' | sed -e "s/=\([\"']\)\(.*\)\1$/=\2/" >> "$GITHUB_ENV"
 
       # 执行引导程序
       - name: Run Bootstrap
