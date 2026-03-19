@@ -47,19 +47,15 @@ if [ "$MSG_LENGTH" -gt "$THRESHOLD" ] && [ "$IS_GITHUB_DEFAULT" -eq 0 ]; then
 fi
 
 # =========================================================
-# 4. 提取文件并构建【标题】与【带有时间戳的正文】
+# 4. 提取文件并构建【标题】与【极简正文】
 # =========================================================
 
-# 自动获取当前日期和时间 (例如: 2026-03-19 19:15:30)
-CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S")
-
-# 将时间戳动态注入到正文标题中
-SUBJECT="【详细变更清单 | 同步于 $CURRENT_TIME】"
+SUBJECT=""
 BODY=""
 HAS_CHANGE=0
 
-# 处理新增 (A)
-ADDED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^A/ {print $2}' | awk -F/ '{print $NF}')
+# 处理新增 (A) - 保留完整相对路径
+ADDED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^A/ {print $2}')
 if [ -n "$ADDED_RAW" ]; then
     COUNT=$(echo "$ADDED_RAW" | wc -l | tr -d ' ')
     FULL=$(echo "$ADDED_RAW" | paste -sd ", " -)
@@ -69,12 +65,17 @@ if [ -n "$ADDED_RAW" ]; then
     else
         SUBJECT="${SUBJECT}新增 $FULL; "
     fi
-    BODY="${BODY}\n[新增] ${FULL}"
+    
+    if [ -z "$BODY" ]; then
+        BODY="[新增] ${FULL}"
+    else
+        BODY="${BODY}\n[新增] ${FULL}"
+    fi
     HAS_CHANGE=1
 fi
 
-# 处理修订 (M)
-MODIFIED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^M/ {print $2}' | awk -F/ '{print $NF}')
+# 处理修订 (M) - 保留完整相对路径
+MODIFIED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^M/ {print $2}')
 if [ -n "$MODIFIED_RAW" ]; then
     COUNT=$(echo "$MODIFIED_RAW" | wc -l | tr -d ' ')
     FULL=$(echo "$MODIFIED_RAW" | paste -sd ", " -)
@@ -84,12 +85,17 @@ if [ -n "$MODIFIED_RAW" ]; then
     else
         SUBJECT="${SUBJECT}修订 $FULL; "
     fi
-    BODY="${BODY}\n[修订] ${FULL}"
+    
+    if [ -z "$BODY" ]; then
+        BODY="[修订] ${FULL}"
+    else
+        BODY="${BODY}\n[修订] ${FULL}"
+    fi
     HAS_CHANGE=1
 fi
 
-# 处理删除 (D)
-DELETED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^D/ {print $2}' | awk -F/ '{print $NF}')
+# 处理删除 (D) - 保留完整相对路径
+DELETED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^D/ {print $2}')
 if [ -n "$DELETED_RAW" ]; then
     COUNT=$(echo "$DELETED_RAW" | wc -l | tr -d ' ')
     FULL=$(echo "$DELETED_RAW" | paste -sd ", " -)
@@ -99,14 +105,19 @@ if [ -n "$DELETED_RAW" ]; then
     else
         SUBJECT="${SUBJECT}删除 $FULL; "
     fi
-    BODY="${BODY}\n[删除] ${FULL}"
+    
+    if [ -z "$BODY" ]; then
+        BODY="[删除] ${FULL}"
+    else
+        BODY="${BODY}\n[删除] ${FULL}"
+    fi
     HAS_CHANGE=1
 fi
 
-# 清理标题末尾多余的分号
+# 清理标题末尾多余的分号和空格
 SUBJECT=$(echo "$SUBJECT" | sed 's/; $//')
 
-# 5. 格式化写入
+# 5. 格式化写入：第一行是标题，空一行，后面直接跟着干干净净的文件清单
 if [ "$HAS_CHANGE" -eq 1 ]; then
     printf "%s\n\n%b\n" "$SUBJECT" "$BODY" > "$COMMIT_MSG_FILE"
 fi
