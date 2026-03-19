@@ -29,9 +29,9 @@ if [ "$CLEAN_LENGTH" -lt 10 ] || [ "$IS_TRIGGER" -eq 1 ]; then
     MOD_RAW=$(echo "$DIFF_DATA" | awk '$1~/^M/{print $2}')
     DEL_RAW=$(echo "$DIFF_DATA" | awk '$1~/^D/{print $2}')
 
-    [ -n "$ADD_RAW" ] && SUBJECT="${SUBJECT}新增 $(echo "$ADD_RAW" | wc -l | tr -d ' ') 个，" && BODY="${BODY}[新增] $(echo "$ADD_RAW" | paste -sd ", " -)\n"
-    [ -n "$MOD_RAW" ] && SUBJECT="${SUBJECT}修订 $(echo "$MOD_RAW" | wc -l | tr -d ' ') 个，" && BODY="${BODY}[修订] $(echo "$MOD_RAW" | paste -sd ", " -)\n"
-    [ -n "$DEL_RAW" ] && SUBJECT="${SUBJECT}删除 $(echo "$DEL_RAW" | wc -l | tr -d ' ') 个，" && BODY="${BODY}[删除] $(echo "$DEL_RAW" | paste -sd ", " -)\n"
+    [ -n "$ADD_RAW" ] && SUBJECT="${SUBJECT}新增 $(echo "$ADD_RAW" | wc -l | tr -d ' ') ，" && BODY="${BODY}[新增] $(echo "$ADD_RAW" | paste -sd ", " -)\n"
+    [ -n "$MOD_RAW" ] && SUBJECT="${SUBJECT}修订 $(echo "$MOD_RAW" | wc -l | tr -d ' ') ，" && BODY="${BODY}[修订] $(echo "$MOD_RAW" | paste -sd ", " -)\n"
+    [ -n "$DEL_RAW" ] && SUBJECT="${SUBJECT}删除 $(echo "$DEL_RAW" | wc -l | tr -d ' ') ，" && BODY="${BODY}[删除] $(echo "$DEL_RAW" | paste -sd ", " -)\n"
 
     if [ -n "$SUBJECT" ]; then
     
