@@ -1,0 +1,112 @@
+#!/bin/sh
+# =============================================================================================
+# 脚本名称：prepare-commit-msg
+#
+# 【功能】
+# Git 提交预处理钩子。根据输入特征，自动将无效或简短的提交信息替换为具体的文件变更列表。
+# 替换格式示例：“新增 a.txt; 修订 b.py; 删除 c.md”。
+#
+# 【触发与放行规则】
+# 1. 触发替换：输入字符数 <= 阈值（默认10），或匹配 GitHub 默认提交格式。
+# 2. 放行保留：输入字符数 > 阈值，且非 GitHub 默认格式（判定为有效自定义备注）。
+#
+# 【部署说明】（适用于仓库统一管理，免复制）
+# 1. 存放路径：项目根目录 `.githooks/prepare-commit-msg`（必须无后缀名）。
+# 2. 生效指令：在终端执行 `git config core.hooksPath .githooks`。
+# 3. 权限要求：在终端执行 `chmod +x .githooks/prepare-commit-msg`。
+# =============================================================================================
+
+set -e
+set -u
+
+# 1. 注入便携版 Git 环境
+export PATH="/c/Portable Files/PortableGit/bin:/c/Portable Files/PortableGit/usr/bin:$PATH"
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=${2:-}
+
+# 2. 忽略合并等特殊操作
+if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ]; then
+    exit 0
+fi
+
+ORIGINAL_MSG=$(cat "$COMMIT_MSG_FILE" | xargs)
+MSG_LENGTH=$(echo -n "$ORIGINAL_MSG" | wc -m | tr -d ' ')
+THRESHOLD=10
+IS_GITHUB_DEFAULT=0
+
+case "$ORIGINAL_MSG" in
+    Update*|Create*|Delete*|Rename*|"up"|"")
+        IS_GITHUB_DEFAULT=1
+        ;;
+esac
+
+# 3. 如果是有效的手写长备注，放行
+if [ "$MSG_LENGTH" -gt "$THRESHOLD" ] && [ "$IS_GITHUB_DEFAULT" -eq 0 ]; then
+    exit 0
+fi
+
+# =========================================================
+# 4. 提取文件并构建【标题】与【带有时间戳的正文】
+# =========================================================
+
+# 自动获取当前日期和时间 (例如: 2026-03-19 19:15:30)
+CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+
+# 将时间戳动态注入到正文标题中
+SUBJECT="【详细变更清单 | 同步于 $CURRENT_TIME】"
+BODY=""
+HAS_CHANGE=0
+
+# 处理新增 (A)
+ADDED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^A/ {print $2}' | awk -F/ '{print $NF}')
+if [ -n "$ADDED_RAW" ]; then
+    COUNT=$(echo "$ADDED_RAW" | wc -l | tr -d ' ')
+    FULL=$(echo "$ADDED_RAW" | paste -sd ", " -)
+    if [ "$COUNT" -gt 3 ]; then
+        PREVIEW=$(echo "$ADDED_RAW" | head -n 2 | paste -sd ", " -)
+        SUBJECT="${SUBJECT}新增 $PREVIEW 等 $COUNT 个; "
+    else
+        SUBJECT="${SUBJECT}新增 $FULL; "
+    fi
+    BODY="${BODY}\n[新增] ${FULL}"
+    HAS_CHANGE=1
+fi
+
+# 处理修订 (M)
+MODIFIED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^M/ {print $2}' | awk -F/ '{print $NF}')
+if [ -n "$MODIFIED_RAW" ]; then
+    COUNT=$(echo "$MODIFIED_RAW" | wc -l | tr -d ' ')
+    FULL=$(echo "$MODIFIED_RAW" | paste -sd ", " -)
+    if [ "$COUNT" -gt 3 ]; then
+        PREVIEW=$(echo "$MODIFIED_RAW" | head -n 2 | paste -sd ", " -)
+        SUBJECT="${SUBJECT}修订 $PREVIEW 等 $COUNT 个; "
+    else
+        SUBJECT="${SUBJECT}修订 $FULL; "
+    fi
+    BODY="${BODY}\n[修订] ${FULL}"
+    HAS_CHANGE=1
+fi
+
+# 处理删除 (D)
+DELETED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^D/ {print $2}' | awk -F/ '{print $NF}')
+if [ -n "$DELETED_RAW" ]; then
+    COUNT=$(echo "$DELETED_RAW" | wc -l | tr -d ' ')
+    FULL=$(echo "$DELETED_RAW" | paste -sd ", " -)
+    if [ "$COUNT" -gt 3 ]; then
+        PREVIEW=$(echo "$DELETED_RAW" | head -n 2 | paste -sd ", " -)
+        SUBJECT="${SUBJECT}删除 $PREVIEW 等 $COUNT 个; "
+    else
+        SUBJECT="${SUBJECT}删除 $FULL; "
+    fi
+    BODY="${BODY}\n[删除] ${FULL}"
+    HAS_CHANGE=1
+fi
+
+# 清理标题末尾多余的分号
+SUBJECT=$(echo "$SUBJECT" | sed 's/; $//')
+
+# 5. 格式化写入
+if [ "$HAS_CHANGE" -eq 1 ]; then
+    printf "%s\n\n%b\n" "$SUBJECT" "$BODY" > "$COMMIT_MSG_FILE"
+fi
