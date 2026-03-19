@@ -59,7 +59,7 @@ jobs:
 
       - name: 目标仓库检出
         if: env.EXTERNAL_REPO != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.EXTERNAL_REPO }}
           token:      ${{ secrets.GH_TARGET_REPO_PAT }}
