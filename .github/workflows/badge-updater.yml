@@ -1,31 +1,41 @@
 name: Badge Updater
 on:
   workflow_run:
-    workflows:
-      - "Cron Runner"
-      - "Push Runner"
+    workflows: ["Cron Runner", "Push Runner"]
     types: [completed]
 
 permissions:
   contents: write
 
 jobs:
-  status:
+  badge_updater:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    
+    env:
+      GIT_USER: ${{ vars.GIT_AUTHOR_NAME }}
+      GIT_EMAIL: ${{ vars.GIT_AUTHOR_EMAIL }}
+
     steps:
       - name: 检出源码仓库
         uses: actions/checkout@v6
-        if: ${{ github.event.workflow_run.conclusion == 'success' }}
-      
+
       - name: 文档徽章更新
-        if: ${{ github.event.workflow_run.conclusion == 'success' }}
         run: |
           set -euo pipefail
+          
           STAMP=$(date -d '+8 hours' +'%Y--%m--%d')
           sed -i "s/{{LAST_UPDATE}}/${STAMP}/g" README.md
           sed -i "s/最近更新-[0-9]\{4\}--[0-9]\{2\}--[0-9]\{2\}-007acc/最近更新-${STAMP}-007acc/g" README.md
+          
+          CHANGED_FILE=$(git status --porcelain | awk '{print $NF}' | xargs -n1 basename | head -n 1)
+          COMMIT_TITLE="update ${CHANGED_FILE:-files}"
+          
+          git config --local user.name "${{ env.GIT_USER }}"
+          git config --local user.email "${{ env.GIT_EMAIL }}"
           git add README.md
-          git commit -m "chore: 自动更新文档徽章" -m "[skip ci]" || exit 0
+          
+          git commit -m "$COMMIT_TITLE" -m "[skip ci]" || exit 0
           git push
 
       - name: 工作流状态验证
