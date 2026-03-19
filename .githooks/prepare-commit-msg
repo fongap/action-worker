@@ -47,24 +47,20 @@ if [ "$MSG_LENGTH" -gt "$THRESHOLD" ] && [ "$IS_GITHUB_DEFAULT" -eq 0 ]; then
 fi
 
 # =========================================================
-# 4. 提取文件并构建【标题】与【极简正文】
+# 4. 提取文件并构建【极简标题】与【完整路径正文】
 # =========================================================
 
 SUBJECT=""
 BODY=""
 HAS_CHANGE=0
 
-# 处理新增 (A) - 保留完整相对路径
+# 处理新增 (A)
 ADDED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^A/ {print $2}')
 if [ -n "$ADDED_RAW" ]; then
     COUNT=$(echo "$ADDED_RAW" | wc -l | tr -d ' ')
     FULL=$(echo "$ADDED_RAW" | paste -sd ", " -)
-    if [ "$COUNT" -gt 3 ]; then
-        PREVIEW=$(echo "$ADDED_RAW" | head -n 2 | paste -sd ", " -)
-        SUBJECT="${SUBJECT}新增 $PREVIEW 等 $COUNT 个; "
-    else
-        SUBJECT="${SUBJECT}新增 $FULL; "
-    fi
+    
+    SUBJECT="${SUBJECT}新增 $COUNT 个文件，"
     
     if [ -z "$BODY" ]; then
         BODY="[新增] ${FULL}"
@@ -74,17 +70,13 @@ if [ -n "$ADDED_RAW" ]; then
     HAS_CHANGE=1
 fi
 
-# 处理修订 (M) - 保留完整相对路径
+# 处理修订 (M)
 MODIFIED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^M/ {print $2}')
 if [ -n "$MODIFIED_RAW" ]; then
     COUNT=$(echo "$MODIFIED_RAW" | wc -l | tr -d ' ')
     FULL=$(echo "$MODIFIED_RAW" | paste -sd ", " -)
-    if [ "$COUNT" -gt 3 ]; then
-        PREVIEW=$(echo "$MODIFIED_RAW" | head -n 2 | paste -sd ", " -)
-        SUBJECT="${SUBJECT}修订 $PREVIEW 等 $COUNT 个; "
-    else
-        SUBJECT="${SUBJECT}修订 $FULL; "
-    fi
+    
+    SUBJECT="${SUBJECT}修订 $COUNT 个文件，"
     
     if [ -z "$BODY" ]; then
         BODY="[修订] ${FULL}"
@@ -94,17 +86,13 @@ if [ -n "$MODIFIED_RAW" ]; then
     HAS_CHANGE=1
 fi
 
-# 处理删除 (D) - 保留完整相对路径
+# 处理删除 (D)
 DELETED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^D/ {print $2}')
 if [ -n "$DELETED_RAW" ]; then
     COUNT=$(echo "$DELETED_RAW" | wc -l | tr -d ' ')
     FULL=$(echo "$DELETED_RAW" | paste -sd ", " -)
-    if [ "$COUNT" -gt 3 ]; then
-        PREVIEW=$(echo "$DELETED_RAW" | head -n 2 | paste -sd ", " -)
-        SUBJECT="${SUBJECT}删除 $PREVIEW 等 $COUNT 个; "
-    else
-        SUBJECT="${SUBJECT}删除 $FULL; "
-    fi
+    
+    SUBJECT="${SUBJECT}删除 $COUNT 个文件，"
     
     if [ -z "$BODY" ]; then
         BODY="[删除] ${FULL}"
@@ -114,10 +102,10 @@ if [ -n "$DELETED_RAW" ]; then
     HAS_CHANGE=1
 fi
 
-# 清理标题末尾多余的分号和空格
-SUBJECT=$(echo "$SUBJECT" | sed 's/; $//')
+# 清理标题末尾多余的中文逗号
+SUBJECT=$(echo "$SUBJECT" | sed 's/，$//')
 
-# 5. 格式化写入：第一行是标题，空一行，后面直接跟着干干净净的文件清单
+# 5. 格式化写入：第一行是极简标题，空一行，后面是完整文件清单
 if [ "$HAS_CHANGE" -eq 1 ]; then
     printf "%s\n\n%b\n" "$SUBJECT" "$BODY" > "$COMMIT_MSG_FILE"
 fi
