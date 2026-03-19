@@ -1,6 +1,6 @@
 # 🚀 Action Worker
 
-![构建状态](https://img.shields.io/github/actions/workflow/status/fongap/action-worker/update-readme-badge.yml?label=构建状态&logo=githubactions&logoColor=white&color=28a745)
+![构建状态](https://img.shields.io/github/actions/workflow/status/fongap/action-worker/badge-updater.yml?label=构建状态&logo=githubactions&logoColor=white&color=28a745)
 ![最近更新](https://img.shields.io/badge/最近更新-2026--03--18-007acc?logo=git&logoColor=white&color=007acc)
 ![核心语言](https://img.shields.io/badge/核心语言-YAML-6f42c1?logo=github&logoColor=white&color=6f42c1)
 ![数据规模](https://img.shields.io/github/repo-size/fongap/action-worker?label=数据规模&logo=databricks&logoColor=white&color=4682b4)
@@ -16,8 +16,8 @@
 
 | 工作流文件                  | 触发机制                              | 功能职责                                                                 |
 |-----------------------------|---------------------------------------|--------------------------------------------------------------------------|
-| `cron-dispatch-handler.yml` | `repository_dispatch [cron-tasks]`    | **定时处理器**：拉取配置、检测环境、执行任务、同步结果、清理 Vault（含定时调度逻辑优化）。 |
-| `push-dispatch-handler.yml` | `repository_dispatch [push-tasks]`    | **推送处理器**：拉取配置、检测环境、执行任务、同步结果、清理 Vault（含推送事件缓存优化）。 |
+| `cron-runner.yml` | `repository_dispatch [cron-tasks]`    | **定时处理器**：拉取配置、检测环境、执行任务、同步结果、清理 Vault（含定时调度逻辑优化）。 |
+| `push-runner.yml` | `repository_dispatch [push-tasks]`    | **推送处理器**：拉取配置、检测环境、执行任务、同步结果、清理 Vault（含推送事件缓存优化）。 |
 
 ## ⚙️ 执行流程
 

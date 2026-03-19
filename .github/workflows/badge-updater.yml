@@ -1,24 +1,21 @@
-name: Update Readme Badge
-
+name: Badge Updater
 on:
   workflow_run:
     workflows:
-      - "Cron Dispatch Handler"
-      - "Push Dispatch Handler"
+      - "Cron Runner"
+      - "Push Runner"
     types: [completed]
-
 permissions:
   contents: write
-          
 jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      # ── 1. 动作层：上游成功才拉取代码并更新时间戳 ──
+      # 源码仓库检出
       - uses: actions/checkout@v6
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
-      - name: Update README
+      
+      - name: 文档徽章更新
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
         run: |
           set -euo pipefail
@@ -27,8 +24,7 @@ jobs:
           sed -i "s/最近更新-[0-9]\{4\}--[0-9]\{2\}--[0-9]\{2\}-007acc/最近更新-${STAMP}-007acc/g" README.md
           # ... (git 提交逻辑) ...
 
-      # ── 2. 状态层：无条件透传上游结论，驱动徽章真实红绿状态 ──
-      - name: Check Upstream Result
+      - name: 工作流状态验证
         if: always() 
         run: |
           echo "Workflow : ${{ github.event.workflow_run.name }}"

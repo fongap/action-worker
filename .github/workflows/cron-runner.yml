@@ -1,0 +1,107 @@
+name: Cron Runner
+on:
+  repository_dispatch:
+    types: [cron-tasks]
+concurrency:
+  group: cron-${{ github.event.client_payload.project }}
+  cancel-in-progress: true
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+jobs:
+  execute:
+    name: "[ ${{ github.event.client_payload.project }} ] Task"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VAULT_DIR:    _vault
+      PROJECT_NAME: ${{ github.event.client_payload.project }}
+
+    steps:
+      - name: 配置仓库检出
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
+          token:      ${{ secrets.GH_SOURCE_VAULT_PAT }}
+          path:       ${{ env.VAULT_DIR }}
+          sparse-checkout: |
+            defaults.env
+            bootstrap.sh
+            scripts
+            projects/${{ env.PROJECT_NAME }}
+          sparse-checkout-cone-mode: false
+
+      - name: 项目配置加载
+        run: |
+          set -euo pipefail
+
+          PROJECT_DIR=$(find  "${GITHUB_WORKSPACE}/${VAULT_DIR}" \
+            -mindepth 2 -maxdepth 3 \
+            -type d -name  "$(basename  "${PROJECT_NAME}")" \
+            | head -1)
+          [[ -n  "${PROJECT_DIR}" ]] || { echo  "::error::project dir not found: ${PROJECT_NAME}"; exit 1; }
+          echo  "PROJECT_DIR=${PROJECT_DIR}"  >>  "$GITHUB_ENV"
+
+          DEFAULTS="${GITHUB_WORKSPACE}/${VAULT_DIR}/defaults.env"
+          PROJECT_CONFIG="${PROJECT_DIR}/config.env"
+
+          [[ -f  "${DEFAULTS}" ]]       || { echo  "::error::missing: ${DEFAULTS}";       exit 1; }
+          [[ -f  "${PROJECT_CONFIG}" ]] || { echo  "::error::missing: ${PROJECT_CONFIG}"; exit 1; }
+
+          grep -v '^\s*#'  "${DEFAULTS}"       | grep -v '^\s*$'  >>  "$GITHUB_ENV"
+          grep -v '^\s*#'  "${PROJECT_CONFIG}" | grep -v '^\s*$' | sed -e  "s/=\([\\"']\)\(.*\)\1$/=\2/"  >>  "$GITHUB_ENV"
+
+      - name: 引导程序执行
+        run: |
+          set -euo pipefail
+          BOOTSTRAP="${GITHUB_WORKSPACE}/${VAULT_DIR}/bootstrap.sh"
+          [[ -f  "${BOOTSTRAP}" ]] || { echo  "::error::missing: ${BOOTSTRAP}"; exit 1; }
+          bash  "${BOOTSTRAP}"  "${PROJECT_DIR}"
+
+      - name: 目标仓库检出
+        if: env.EXTERNAL_REPO != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.EXTERNAL_REPO }}
+          token:      ${{ secrets.GH_TARGET_REPO_PAT }}
+          path:       _target
+
+      - name: 输出产物同步
+        if: env.EXTERNAL_REPO != ''
+        run: |
+          set -euo pipefail
+          SRC="${PROJECT_DIR}/${OUTPUT_FILE}"
+          DST="_target/${FINAL_DEST_DIR}"
+
+          [[ -e  "${SRC}" ]] || { echo  "::error::artifact not found: ${SRC}"; exit 1; }
+          mkdir -p  "${DST}"
+          if [[ -d  "${SRC}" ]]; then cp -rf  "${SRC}/."  "${DST}/"; else cp -f  "${SRC}"  "${DST}/"; fi
+
+          cd _target
+          git config --local user.name   "github-actions[bot]"
+          git config --local user.email  "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          if [[ -n  "$(git status --porcelain)" ]]; then
+            git commit -m  "chore: automated update $(date -u +'%Y-%m-%d') [skip ci]"
+            git push origin main
+          else
+            echo  "::notice::no changes, skipping push"
+          fi
+      
+      - name: 输出产物清理
+        if: always()
+        run: |
+          bash  "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
+
+      - name: 敏感数据清理
+        if: always()
+        run: |
+          set -euo pipefail
+          VAULT_PATH="${GITHUB_WORKSPACE}/${VAULT_DIR}"
+          [[ -d  "${VAULT_PATH}" ]] || exit 0
+          RESOLVED=$(realpath -m  "${VAULT_PATH}")
+          WS=$(realpath  "${GITHUB_WORKSPACE}")
+          if [[  "${RESOLVED}/" ==  "${WS}/"* ]]; then
+            rm -rf  "${VAULT_PATH}"
+          else
+            echo  "::error::unsafe path rejected: ${RESOLVED}"; exit 1
+          fi
