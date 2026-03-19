@@ -154,66 +154,10 @@ jobs:
           repository: ${{ env.EXTERNAL_REPO }}
           token:      ${{ secrets.GH_TARGET_REPO_PAT }}
           path:       _target
-
-      - name: 输出产物脱敏检查
-        if: env.EXTERNAL_REPO != ''
-        run: |
-          set -euo pipefail
-          SRC="${PROJECT_DIR}/${OUTPUT_FILE}"
-          [[ -e "${SRC}" ]] || { echo "::error::artifact not found: ${SRC}"; exit 1; }
-
-          echo "::group::扫描敏感数据模式"
-
-          # 检测模式列表（正则 | 描述）
-          PATTERNS=(
-            'BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY|PEM 私钥'
-            'gh[ps]_[A-Za-z0-9]{36,}|GitHub OAuth Token'
-            'github_pat_[A-Za-z0-9_]{82}|GitHub Fine-grained PAT'
-            'AKIA[0-9A-Z]{16}|AWS Access Key ID'
-            'sk-ant-api[A-Za-z0-9_\-]{32,}|Anthropic API Key'
-            'sk-[A-Za-z0-9]{32,}|通用 SK 密钥'
-            'eyJ[A-Za-z0-9_\-]{50,}\.eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}|JWT Token'
-            '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|UUID 格式 Token'
-            '(password|passwd|secret|token|api_key|apikey|auth_key)[[:space:]]*[:=][[:space:]]*[^${\[({][^[:space:]]{8,}|明文凭据字段'
-          )
-
-          FOUND=0
-
-          for entry in "${PATTERNS[@]}"; do
-            PATTERN="${entry%|*}"
-            DESC="${entry##*|}"
-
-            # 跳过二进制文件，递归扫描 SRC
-            if [[ -d "${SRC}" ]]; then
-              SCAN_TARGET="${SRC}"
-            else
-              SCAN_TARGET="${SRC}"
-            fi
-
-            HITS=$(grep -rlE --binary-files=without-match "${PATTERN}" "${SCAN_TARGET}" 2>/dev/null || true)
-
-            if [[ -n "${HITS}" ]]; then
-              echo "::warning title=脱敏检查::检测到疑似【${DESC}】"
-              while IFS= read -r filepath; do
-                # 只输出文件名和行号，不输出匹配内容，避免在日志中二次泄露
-                LINES=$(grep -nE --binary-files=without-match "${PATTERN}" "${filepath}" \
-                  | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')
-                REL="${filepath#${SRC}/}"
-                echo "    文件: ${REL:-$(basename "${filepath}")}  行: ${LINES}"
-              done <<< "${HITS}"
-              FOUND=1
-            fi
-          done
-
-          echo "::endgroup::"
-
-          if [[ "${FOUND}" -eq 1 ]]; then
-            echo "::error::产物中发现疑似敏感数据，已阻止推送至外部仓库。请排查上方标注的文件和行号。"
-            exit 1
-          fi
-
-          echo "脱敏检查通过，未发现敏感数据模式。"
-
+       
+      - name: 敏感数据扫描
+        run: bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/security-guard.sh" scan       
+ 
       - name: 输出产物同步
         if: env.EXTERNAL_REPO != ''
         run: |
@@ -236,21 +180,6 @@ jobs:
             echo "::notice::no changes, skipping push"
           fi
 
-      - name: 输出产物清理
+      - name: 清理构建现场
         if: always()
-        run: |
-          bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
-
-      - name: 敏感数据清理
-        if: always()
-        run: |
-          set -euo pipefail
-          VAULT_PATH="${GITHUB_WORKSPACE}/${VAULT_DIR}"
-          [[ -d "${VAULT_PATH}" ]] || exit 0
-          RESOLVED=$(realpath -m "${VAULT_PATH}")
-          WS=$(realpath "${GITHUB_WORKSPACE}")
-          if [[ "${RESOLVED}/" == "${WS}/"* ]]; then
-            rm -rf "${VAULT_PATH}"
-          else
-            echo "::error::unsafe path rejected: ${RESOLVED}"; exit 1
-          fi
+        run: bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/security-guard.sh" clean
