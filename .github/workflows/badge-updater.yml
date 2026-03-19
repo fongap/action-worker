@@ -38,7 +38,8 @@ jobs:
             COMMIT_MSG="chore: update badge ${STAMP}"
           fi
           
-          git add README.md
+          git add .
+          
           if [[ -n "$(git status --porcelain)" ]]; then
             git commit -m "$COMMIT_MSG" -m "[skip ci]"
             git push
