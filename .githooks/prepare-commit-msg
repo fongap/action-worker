@@ -1,13 +1,14 @@
 #!/bin/sh
 set -e
 
-# 1. 环境自适应
 [ -d "/c/Portable Files" ] && export PATH="/c/Portable Files/PortableGit/bin:/c/Portable Files/PortableGit/usr/bin:$PATH"
 
 COMMIT_MSG_FILE=$1
 
-# 2. 获取并清洗消息
 ORIGINAL_MSG=$(cat "$COMMIT_MSG_FILE" | xargs)
+
+SKIP_TAG=$(echo "$ORIGINAL_MSG" | grep -o "\[skip ci\]" || true)
+
 CLEAN_MSG=$(echo "$ORIGINAL_MSG" | sed 's/\[skip ci\]//g' | xargs)
 CLEAN_LENGTH=$(echo -n "$CLEAN_MSG" | wc -m | tr -d ' ')
 
@@ -16,9 +17,8 @@ case "$CLEAN_MSG" in
     up*|update*|Update*|Create*|Delete*|Rename*|"") IS_TRIGGER=1 ;;
 esac
 
-# 3. 判定：如果需要改写
+# 字符"10"可自定义，字符数判断阈值
 if [ "$CLEAN_LENGTH" -lt 10 ] || [ "$IS_TRIGGER" -eq 1 ]; then
-    
     DIFF_DATA=$(git diff --cached --name-status)
     [ -z "$DIFF_DATA" ] && exit 0
 
@@ -29,20 +29,20 @@ if [ "$CLEAN_LENGTH" -lt 10 ] || [ "$IS_TRIGGER" -eq 1 ]; then
     MOD_RAW=$(echo "$DIFF_DATA" | awk '$1~/^M/{print $2}')
     DEL_RAW=$(echo "$DIFF_DATA" | awk '$1~/^D/{print $2}')
 
-    [ -n "$ADD_RAW" ] && SUBJECT="${SUBJECT}新增 $(echo "$ADD_RAW" | wc -l | tr -d ' ') 个文件，" && BODY="${BODY}[新增] $(echo "$ADD_RAW" | paste -sd ", " -)\n"
-    [ -n "$MOD_RAW" ] && SUBJECT="${SUBJECT}修订 $(echo "$MOD_RAW" | wc -l | tr -d ' ') 个文件，" && BODY="${BODY}[修订] $(echo "$MOD_RAW" | paste -sd ", " -)\n"
-    [ -n "$DEL_RAW" ] && SUBJECT="${SUBJECT}删除 $(echo "$DEL_RAW" | wc -l | tr -d ' ') 个文件，" && BODY="${BODY}[删除] $(echo "$DEL_RAW" | paste -sd ", " -)\n"
+    [ -n "$ADD_RAW" ] && SUBJECT="${SUBJECT}新增 $(echo "$ADD_RAW" | wc -l | tr -d ' ') 个，" && BODY="${BODY}[新增] $(echo "$ADD_RAW" | paste -sd ", " -)\n"
+    [ -n "$MOD_RAW" ] && SUBJECT="${SUBJECT}修订 $(echo "$MOD_RAW" | wc -l | tr -d ' ') 个，" && BODY="${BODY}[修订] $(echo "$MOD_RAW" | paste -sd ", " -)\n"
+    [ -n "$DEL_RAW" ] && SUBJECT="${SUBJECT}删除 $(echo "$DEL_RAW" | wc -l | tr -d ' ') 个，" && BODY="${BODY}[删除] $(echo "$DEL_RAW" | paste -sd ", " -)\n"
 
     if [ -n "$SUBJECT" ]; then
-        SUBJECT=$(echo "$SUBJECT" | sed 's/，$//')
-        
-        SKIP_TAG=$(echo "$ORIGINAL_MSG" | grep -o "\[skip ci\]" || true)
-        
-        if [ -n "$SKIP_TAG" ]; then
+    
+        RAW_SUBJECT=$(echo "$SUBJECT" | sed 's/，$/ 个文件/')
 
-            printf "%s\n\n%b\n\n<!-- %s -->" "$SUBJECT" "$BODY" "$SKIP_TAG" > "$COMMIT_MSG_FILE"
+        if [ -n "$SKIP_TAG" ]; then
+            TITLE="${RAW_SUBJECT} ${SKIP_TAG}"
         else
-            printf "%s\n\n%b" "$SUBJECT" "$BODY" > "$COMMIT_MSG_FILE"
+            TITLE="${RAW_SUBJECT}"
         fi
+        
+        printf "%s\n\n%b" "$TITLE" "$BODY" > "$COMMIT_MSG_FILE"
     fi
 fi
