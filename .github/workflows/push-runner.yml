@@ -1,4 +1,4 @@
-name: Push Runner
+name: Push Runner 02
 on:
   repository_dispatch:
     types: [push-tasks]
@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: 配置仓库检出
         uses: actions/checkout@v6
-        with: 
+        with:
           repository: ${{ secrets.GH_SOURCE_VAULT_REPO }}
           token:      ${{ secrets.GH_SOURCE_VAULT_PAT }}
           path:       ${{ env.VAULT_DIR }}
@@ -36,53 +36,53 @@ jobs:
         run: |
           set -euo pipefail
 
-          PROJECT_DIR=$(find  "${GITHUB_WORKSPACE}/${VAULT_DIR}" \
+          PROJECT_DIR=$(find "${GITHUB_WORKSPACE}/${VAULT_DIR}" \
             -mindepth 2 -maxdepth 3 \
-            -type d -name  "$(basename  "${TARGET_PROJECT}")" \
+            -type d -name "$(basename "${TARGET_PROJECT}")" \
             | head -1)
-          [[ -n  "${PROJECT_DIR}" ]] || { echo  "::error::project dir not found: ${TARGET_PROJECT}"; exit 1; }
-          echo  "PROJECT_DIR=${PROJECT_DIR}"  >>  "$GITHUB_ENV"
+          [[ -n "${PROJECT_DIR}" ]] || { echo "::error::project dir not found: ${TARGET_PROJECT}"; exit 1; }
+          echo "PROJECT_DIR=${PROJECT_DIR}" >> "$GITHUB_ENV"
 
           DEFAULTS="${GITHUB_WORKSPACE}/${VAULT_DIR}/defaults.env"
           PROJECT_CONFIG="${PROJECT_DIR}/config.env"
 
-          [[ -f  "${DEFAULTS}" ]] || { echo  "::error::missing: ${DEFAULTS}"; exit 1; }
-          grep -v '^\s*#'  "${DEFAULTS}" | grep -v '^\s*$'  >>  "$GITHUB_ENV"
-          source  "${DEFAULTS}"
+          [[ -f "${DEFAULTS}" ]] || { echo "::error::missing: ${DEFAULTS}"; exit 1; }
+          grep -v '^\s*#' "${DEFAULTS}" | grep -v '^\s*$' >> "$GITHUB_ENV"
+          source "${DEFAULTS}"
 
-          if [[ -f  "${PROJECT_CONFIG}" ]]; then
-            grep -v '^\s*#'  "${PROJECT_CONFIG}" | grep -v '^\s*$' | sed -e  "s/=\([\\"']\)\(.*\)\1$/=\2/"  >>  "$GITHUB_ENV"
-            source  "${PROJECT_CONFIG}"
+          if [[ -f "${PROJECT_CONFIG}" ]]; then
+            grep -v '^\s*#' "${PROJECT_CONFIG}" | grep -v '^\s*$' | sed -e "s/=\([\"']\)\(.*\)\1$/=\2/" >> "$GITHUB_ENV"
+            source "${PROJECT_CONFIG}"
           fi
 
-          echo  "node_version=${NODE_VERSION:-lts/*}"    >>  "$GITHUB_OUTPUT"
-          echo  "python_version=${PYTHON_VERSION:-3.x}"  >>  "$GITHUB_OUTPUT"
-          echo  "go_version=${GO_VERSION:-stable}"      >>  "$GITHUB_OUTPUT"
+          echo "node_version=${NODE_VERSION:-lts/*}"   >> "$GITHUB_OUTPUT"
+          echo "python_version=${PYTHON_VERSION:-3.x}" >> "$GITHUB_OUTPUT"
+          echo "go_version=${GO_VERSION:-stable}"      >> "$GITHUB_OUTPUT"
 
       - name: 运行环境检测
         run: |
           set -euo pipefail
 
-          if [[ -n  "${RUNTIME:-}" ]]; then
+          if [[ -n "${RUNTIME:-}" ]]; then
             exit 0
           fi
 
-          if   [[ -f  "${PROJECT_DIR}/requirements.txt" ]] \
-            || [[ -f  "${PROJECT_DIR}/pyproject.toml"   ]] \
-            || compgen -G  "${PROJECT_DIR}/*.py"  > /dev/null 2>&1; then
+          if   [[ -f "${PROJECT_DIR}/requirements.txt" ]] \
+            || [[ -f "${PROJECT_DIR}/pyproject.toml"   ]] \
+            || compgen -G "${PROJECT_DIR}/*.py" > /dev/null 2>&1; then
             detected="python"
-          elif [[ -f  "${PROJECT_DIR}/package.json" ]] \
-            || compgen -G  "${PROJECT_DIR}/*.js"   > /dev/null 2>&1 \
-            || compgen -G  "${PROJECT_DIR}/*.ts"   > /dev/null 2>&1; then
+          elif [[ -f "${PROJECT_DIR}/package.json" ]] \
+            || compgen -G "${PROJECT_DIR}/*.js"  > /dev/null 2>&1 \
+            || compgen -G "${PROJECT_DIR}/*.ts"  > /dev/null 2>&1; then
             detected="node"
-          elif [[ -f  "${PROJECT_DIR}/go.mod" ]] \
-            || compgen -G  "${PROJECT_DIR}/*.go"  > /dev/null 2>&1; then
+          elif [[ -f "${PROJECT_DIR}/go.mod" ]] \
+            || compgen -G "${PROJECT_DIR}/*.go" > /dev/null 2>&1; then
             detected="go"
           else
             detected="shell"
           fi
 
-          echo  "RUNTIME=${detected}"  >>  "$GITHUB_ENV"
+          echo "RUNTIME=${detected}" >> "$GITHUB_ENV"
 
       - name: Node环境配置
         if: env.RUNTIME == 'node'
@@ -124,18 +124,18 @@ jobs:
           ALGOLIA_INDEX_NAME:      ${{ secrets.ALGOLIA_INDEX_NAME }}
           ENS_RESEND_KEY:          ${{ secrets.ENS_RESEND_KEY }}
           ENS_ADMIN_TOKEN:         ${{ secrets.ENS_ADMIN_TOKEN }}
-          ENS_GH_READ_TOKEN:       ${{ secrets.ENS_GH_READ_TOKEN }} 
+          ENS_GH_READ_TOKEN:       ${{ secrets.ENS_GH_READ_TOKEN }}
           ENS_WEBHOOK_SECRET:      ${{ secrets.ENS_WEBHOOK_SECRET }}
           PROJECT_DIR:             ${{ env.PROJECT_DIR }}
           HUGO_CACHE_DIR:          ${{ github.workspace }}/.hugo-module-cache
         run: |
           set -euo pipefail
 
-          git config --global user.name   "github-actions[bot]"
-          git config --global user.email  "41898282+github-actions[bot]@users.noreply.github.com"
-          SUBJECT=$([[  "${{ github.event_name }}" ==  "push" ]] \
-            && echo  "push by @${{ github.actor }}" \
-            || echo  "dispatch-${{ github.event.action }}")
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          SUBJECT=$([ "${{ github.event_name }}" == "push" ] \
+            && echo "push by @${{ github.actor }}" \
+            || echo "dispatch-${{ github.event.action }}")
           export GIT_CONFIRM_TITLE="chore: ${SUBJECT}"
           export GIT_CONFIRM_BODY="[skip ci]"
 
@@ -143,11 +143,11 @@ jobs:
           SCRIPTS_DIR="${VAULT_PATH}/scripts"
           TASK_FILE="${PROJECT_DIR}/task.json"
 
-          [[ -f  "${TASK_FILE}" ]] || { echo  "::error::task.json not found: ${TASK_FILE}"; exit 1; }
+          [[ -f "${TASK_FILE}" ]] || { echo "::error::task.json not found: ${TASK_FILE}"; exit 1; }
 
-          source  "${VAULT_PATH}/bootstrap.sh"
+          source "${VAULT_PATH}/bootstrap.sh"
 
-          run_tasks  "${TASK_FILE}"  "${SCRIPTS_DIR}"
+          run_tasks "${TASK_FILE}" "${SCRIPTS_DIR}"
 
       - name: 目标仓库检出
         if: env.EXTERNAL_REPO != ''
@@ -157,6 +157,65 @@ jobs:
           token:      ${{ secrets.GH_TARGET_REPO_PAT }}
           path:       _target
 
+      - name: 输出产物脱敏检查
+        if: env.EXTERNAL_REPO != ''
+        run: |
+          set -euo pipefail
+          SRC="${PROJECT_DIR}/${OUTPUT_FILE}"
+          [[ -e "${SRC}" ]] || { echo "::error::artifact not found: ${SRC}"; exit 1; }
+
+          echo "::group::扫描敏感数据模式"
+
+          # 检测模式列表（正则 | 描述）
+          PATTERNS=(
+            'BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY|PEM 私钥'
+            'gh[ps]_[A-Za-z0-9]{36,}|GitHub OAuth Token'
+            'github_pat_[A-Za-z0-9_]{82}|GitHub Fine-grained PAT'
+            'AKIA[0-9A-Z]{16}|AWS Access Key ID'
+            'sk-ant-api[A-Za-z0-9_\-]{32,}|Anthropic API Key'
+            'sk-[A-Za-z0-9]{32,}|通用 SK 密钥'
+            'eyJ[A-Za-z0-9_\-]{50,}\.eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}|JWT Token'
+            '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|UUID 格式 Token'
+            '(password|passwd|secret|token|api_key|apikey|auth_key)[[:space:]]*[:=][[:space:]]*[^${\[({][^[:space:]]{8,}|明文凭据字段'
+          )
+
+          FOUND=0
+
+          for entry in "${PATTERNS[@]}"; do
+            PATTERN="${entry%|*}"
+            DESC="${entry##*|}"
+
+            # 跳过二进制文件，递归扫描 SRC
+            if [[ -d "${SRC}" ]]; then
+              SCAN_TARGET="${SRC}"
+            else
+              SCAN_TARGET="${SRC}"
+            fi
+
+            HITS=$(grep -rlE --binary-files=without-match "${PATTERN}" "${SCAN_TARGET}" 2>/dev/null || true)
+
+            if [[ -n "${HITS}" ]]; then
+              echo "::warning title=脱敏检查::检测到疑似【${DESC}】"
+              while IFS= read -r filepath; do
+                # 只输出文件名和行号，不输出匹配内容，避免在日志中二次泄露
+                LINES=$(grep -nE --binary-files=without-match "${PATTERN}" "${filepath}" \
+                  | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')
+                REL="${filepath#${SRC}/}"
+                echo "    文件: ${REL:-$(basename "${filepath}")}  行: ${LINES}"
+              done <<< "${HITS}"
+              FOUND=1
+            fi
+          done
+
+          echo "::endgroup::"
+
+          if [[ "${FOUND}" -eq 1 ]]; then
+            echo "::error::产物中发现疑似敏感数据，已阻止推送至外部仓库。请排查上方标注的文件和行号。"
+            exit 1
+          fi
+
+          echo "脱敏检查通过，未发现敏感数据模式。"
+
       - name: 输出产物同步
         if: env.EXTERNAL_REPO != ''
         run: |
@@ -164,36 +223,36 @@ jobs:
           SRC="${PROJECT_DIR}/${OUTPUT_FILE}"
           DST="_target/${FINAL_DEST_DIR}"
 
-          [[ -e  "${SRC}" ]] || { echo  "::error::artifact not found: ${SRC}"; exit 1; }
-          mkdir -p  "${DST}"
-          if [[ -d  "${SRC}" ]]; then cp -rf  "${SRC}/."  "${DST}/"; else cp -f  "${SRC}"  "${DST}/"; fi
+          [[ -e "${SRC}" ]] || { echo "::error::artifact not found: ${SRC}"; exit 1; }
+          mkdir -p "${DST}"
+          if [[ -d "${SRC}" ]]; then cp -rf "${SRC}/." "${DST}/"; else cp -f "${SRC}" "${DST}/"; fi
 
           cd _target
-          git config --local user.name   "github-actions[bot]"
-          git config --local user.email  "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          if [[ -n  "$(git status --porcelain)" ]]; then
-            git commit -m  "chore: automated update $(date -u +'%Y-%m-%d') [skip ci]"
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git commit -m "chore: automated update $(date -u +'%Y-%m-%d') [skip ci]"
             git push origin main
           else
-            echo  "::notice::no changes, skipping push"
+            echo "::notice::no changes, skipping push"
           fi
 
       - name: 输出产物清理
         if: always()
         run: |
-          bash  "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
+          bash "${GITHUB_WORKSPACE}/${VAULT_DIR}/scripts/cleanup-all.sh"
 
       - name: 敏感数据清理
         if: always()
         run: |
           set -euo pipefail
           VAULT_PATH="${GITHUB_WORKSPACE}/${VAULT_DIR}"
-          [[ -d  "${VAULT_PATH}" ]] || exit 0
-          RESOLVED=$(realpath -m  "${VAULT_PATH}")
-          WS=$(realpath  "${GITHUB_WORKSPACE}")
-          if [[  "${RESOLVED}/" ==  "${WS}/"* ]]; then
-            rm -rf  "${VAULT_PATH}"
+          [[ -d "${VAULT_PATH}" ]] || exit 0
+          RESOLVED=$(realpath -m "${VAULT_PATH}")
+          WS=$(realpath "${GITHUB_WORKSPACE}")
+          if [[ "${RESOLVED}/" == "${WS}/"* ]]; then
+            rm -rf "${VAULT_PATH}"
           else
-            echo  "::error::unsafe path rejected: ${RESOLVED}"; exit 1
+            echo "::error::unsafe path rejected: ${RESOLVED}"; exit 1
           fi
