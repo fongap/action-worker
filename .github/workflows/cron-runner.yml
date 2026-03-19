@@ -1,4 +1,4 @@
-name: Cron Runner 02
+name: Cron Runner
 on:
   repository_dispatch:
     types: [cron-tasks]

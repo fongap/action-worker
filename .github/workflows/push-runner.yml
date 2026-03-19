@@ -1,4 +1,4 @@
-name: Push Runner 02
+name: Push Runner
 on:
   repository_dispatch:
     types: [push-tasks]
