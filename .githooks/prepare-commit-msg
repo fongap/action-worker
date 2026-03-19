@@ -17,98 +17,44 @@
 # =============================================================================================
 
 set -e
-set -u
 
-# Windows: 添加Git路径；Linux/CI环境跳过
-if [ -d "/c/Portable Files" ]; then
-    export PATH="/c/Portable Files/PortableGit/bin:/c/Portable Files/PortableGit/usr/bin:$PATH"
-fi
+# 环境自适应
+[ -d "/c/Portable Files" ] && export PATH="/c/Portable Files/PortableGit/bin:/c/Portable Files/PortableGit/usr/bin:$PATH"
 
 COMMIT_MSG_FILE=$1
-COMMIT_SOURCE=${2:-}
-
-# 跳过合并/压缩等特殊操作
-if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ]; then
-    exit 0
-fi
-
+# 1. 获取并清洗消息
 ORIGINAL_MSG=$(cat "$COMMIT_MSG_FILE" | xargs)
-MSG_LENGTH=$(echo -n "$ORIGINAL_MSG" | wc -m | tr -d ' ')
-THRESHOLD=10
-IS_GITHUB_DEFAULT=0
+CLEAN_MSG=$(echo "$ORIGINAL_MSG" | sed 's/\[skip ci\]//g' | xargs)
+CLEAN_LENGTH=$(echo -n "$CLEAN_MSG" | wc -m | tr -d ' ')
 
-# 检测GitHub默认提交格式
-case "$ORIGINAL_MSG" in
-    Update*|Create*|Delete*|Rename*|"update"|"")
-        IS_GITHUB_DEFAULT=1
-        ;;
-esac
-
-# 有效自定义备注直接保留
-if [ "$MSG_LENGTH" -gt "$THRESHOLD" ] && [ "$IS_GITHUB_DEFAULT" -eq 0 ]; then
-    exit 0
-fi
-
-# =========================================================
-# 构建变更摘要：极简标题(首行) + 文件列表(正文)
-# =========================================================
-
-SUBJECT=""
-BODY=""
-HAS_CHANGE=0
-
-# 新增文件处理 (A)
-ADDED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^A/ {print $2}')
-if [ -n "$ADDED_RAW" ]; then
-    COUNT=$(echo "$ADDED_RAW" | wc -l | tr -d ' ')
-    FULL=$(echo "$ADDED_RAW" | paste -sd ", " -)
+# 2. 判断是否需要接管 (长度不足 10 或 命中关键字)
+if [ "$CLEAN_LENGTH" -lt 10 ] || [[ "$CLEAN_MSG" =~ ^(up|update|Update|Create|Delete|Rename) ]]; then
     
-    SUBJECT="${SUBJECT}新增 $COUNT 个文件，"
+    # 3. 统计变更
+    SUBJECT=""
+    BODY=""
+    HAS_CHANGE=0
     
-    if [ -z "$BODY" ]; then
-        BODY="[新增] ${FULL}"
-    else
-        BODY="${BODY}\n[新增] ${FULL}"
+    # 提取变更行并处理
+    DIFF_DATA=$(git diff --cached --name-status)
+    [ -z "$DIFF_DATA" ] && exit 0
+
+    ADD_CNT=$(echo "$DIFF_DATA" | grep -c "^A" || true)
+    MOD_CNT=$(echo "$DIFF_DATA" | grep -c "^M" || true)
+    DEL_CNT=$(echo "$DIFF_DATA" | grep -c "^D" || true)
+
+    [ "$ADD_CNT" -gt 0 ] && SUBJECT="${SUBJECT}新增 $ADD_CNT 个文件，" && BODY="${BODY}[新增] $(echo "$DIFF_DATA" | awk '$1=="A"{print $2}' | paste -sd ", " -)\n" && HAS_CHANGE=1
+    [ "$MOD_CNT" -gt 0 ] && SUBJECT="${SUBJECT}修订 $MOD_CNT 个文件，" && BODY="${BODY}[修订] $(echo "$DIFF_DATA" | awk '$1=="M"{print $2}' | paste -sd ", " -)\n" && HAS_CHANGE=1
+    [ "$DEL_CNT" -gt 0 ] && SUBJECT="${SUBJECT}删除 $DEL_CNT 个文件，" && BODY="${BODY}[删除] $(echo "$DIFF_DATA" | awk '$1=="D"{print $2}' | paste -sd ", " -)\n" && HAS_CHANGE=1
+
+    if [ "$HAS_CHANGE" -eq 1 ]; then
+        SUBJECT=$(echo "$SUBJECT" | sed 's/，$//')
+        # 4. 自动识别核心语言 (可选，如不需要可删掉这部分)
+        # 通过文件后缀粗略判断排名第一的语言
+        TOP_LANG=$(echo "$DIFF_DATA" | awk -F. '{print $NF}' | sort | uniq -c | sort -nr | head -1 | awk '{print $2}' | tr '[:lower:]' '[:upper:]' | sed 's/YML/YAML/; s/JS/JavaScript/; s/PY/Python/')
+        
+        # 5. 组装最终消息 (保留原有的 [skip ci])
+        SKIP_TAG=$(echo "$ORIGINAL_MSG" | grep -o "\[skip ci\]" || true)
+        printf "%s (主语言: %s)\n\n%b\n%s" "$SUBJECT" "${TOP_LANG:-Unknown}" "$BODY" "$SKIP_TAG" > "$COMMIT_MSG_FILE"
     fi
-    HAS_CHANGE=1
-fi
-
-# 修订文件处理 (M)
-MODIFIED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^M/ {print $2}')
-if [ -n "$MODIFIED_RAW" ]; then
-    COUNT=$(echo "$MODIFIED_RAW" | wc -l | tr -d ' ')
-    FULL=$(echo "$MODIFIED_RAW" | paste -sd ", " -)
-    
-    SUBJECT="${SUBJECT}修订 $COUNT 个文件，"
-    
-    if [ -z "$BODY" ]; then
-        BODY="[修订] ${FULL}"
-    else
-        BODY="${BODY}\n[修订] ${FULL}"
-    fi
-    HAS_CHANGE=1
-fi
-
-# 删除文件处理 (D)
-DELETED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^D/ {print $2}')
-if [ -n "$DELETED_RAW" ]; then
-    COUNT=$(echo "$DELETED_RAW" | wc -l | tr -d ' ')
-    FULL=$(echo "$DELETED_RAW" | paste -sd ", " -)
-    
-    SUBJECT="${SUBJECT}删除 $COUNT 个文件，"
-    
-    if [ -z "$BODY" ]; then
-        BODY="[删除] ${FULL}"
-    else
-        BODY="${BODY}\n[删除] ${FULL}"
-    fi
-    HAS_CHANGE=1
-fi
-
-# 清理标题尾部逗号
-SUBJECT=$(echo "$SUBJECT" | sed 's/，$//')
-
-# 写入摘要：极简标题 + 空行 + 文件列表
-if [ "$HAS_CHANGE" -eq 1 ]; then
-    printf "%s\n\n%b\n" "$SUBJECT" "$BODY" > "$COMMIT_MSG_FILE"
 fi
