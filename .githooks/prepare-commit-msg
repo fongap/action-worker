@@ -19,13 +19,15 @@
 set -e
 set -u
 
-# 1. 注入便携版 Git 环境
-export PATH="/c/Portable Files/PortableGit/bin:/c/Portable Files/PortableGit/usr/bin:$PATH"
+# Windows: 添加Git路径；Linux/CI环境跳过
+if [ -d "/c/Portable Files" ]; then
+    export PATH="/c/Portable Files/PortableGit/bin:/c/Portable Files/PortableGit/usr/bin:$PATH"
+fi
 
 COMMIT_MSG_FILE=$1
 COMMIT_SOURCE=${2:-}
 
-# 2. 忽略合并等特殊操作
+# 跳过合并/压缩等特殊操作
 if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ]; then
     exit 0
 fi
@@ -35,26 +37,27 @@ MSG_LENGTH=$(echo -n "$ORIGINAL_MSG" | wc -m | tr -d ' ')
 THRESHOLD=10
 IS_GITHUB_DEFAULT=0
 
+# 检测GitHub默认提交格式
 case "$ORIGINAL_MSG" in
-    Update*|Create*|Delete*|Rename*|"up"|"")
+    Update*|Create*|Delete*|Rename*|"update"|"")
         IS_GITHUB_DEFAULT=1
         ;;
 esac
 
-# 3. 如果是有效的手写长备注，放行
+# 有效自定义备注直接保留
 if [ "$MSG_LENGTH" -gt "$THRESHOLD" ] && [ "$IS_GITHUB_DEFAULT" -eq 0 ]; then
     exit 0
 fi
 
 # =========================================================
-# 4. 提取文件并构建【极简标题】与【完整路径正文】
+# 构建变更摘要：极简标题(首行) + 文件列表(正文)
 # =========================================================
 
 SUBJECT=""
 BODY=""
 HAS_CHANGE=0
 
-# 处理新增 (A)
+# 新增文件处理 (A)
 ADDED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^A/ {print $2}')
 if [ -n "$ADDED_RAW" ]; then
     COUNT=$(echo "$ADDED_RAW" | wc -l | tr -d ' ')
@@ -70,7 +73,7 @@ if [ -n "$ADDED_RAW" ]; then
     HAS_CHANGE=1
 fi
 
-# 处理修订 (M)
+# 修订文件处理 (M)
 MODIFIED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^M/ {print $2}')
 if [ -n "$MODIFIED_RAW" ]; then
     COUNT=$(echo "$MODIFIED_RAW" | wc -l | tr -d ' ')
@@ -86,7 +89,7 @@ if [ -n "$MODIFIED_RAW" ]; then
     HAS_CHANGE=1
 fi
 
-# 处理删除 (D)
+# 删除文件处理 (D)
 DELETED_RAW=$(git diff --cached --name-status | awk '$1 ~ /^D/ {print $2}')
 if [ -n "$DELETED_RAW" ]; then
     COUNT=$(echo "$DELETED_RAW" | wc -l | tr -d ' ')
@@ -102,10 +105,10 @@ if [ -n "$DELETED_RAW" ]; then
     HAS_CHANGE=1
 fi
 
-# 清理标题末尾多余的中文逗号
+# 清理标题尾部逗号
 SUBJECT=$(echo "$SUBJECT" | sed 's/，$//')
 
-# 5. 格式化写入：第一行是极简标题，空一行，后面是完整文件清单
+# 写入摘要：极简标题 + 空行 + 文件列表
 if [ "$HAS_CHANGE" -eq 1 ]; then
     printf "%s\n\n%b\n" "$SUBJECT" "$BODY" > "$COMMIT_MSG_FILE"
 fi

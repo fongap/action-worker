@@ -82,13 +82,22 @@ jobs:
           cd _target
           git config --local user.name  "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          if [ -d ".githooks" ]; then
+            echo "检测到 .githooks 文件夹，使用自动备注。"
+            git config --local core.hooksPath .githooks
+            chmod +x .githooks/prepare-commit-msg
+            COMMIT_MSG="update"
+          else
+            echo "未发现 .githooks 文件夹，使用默认备注。"
+            COMMIT_MSG="chore: automated update $(date -u +'%Y-%m-%d')"
+          fi
+          
           git add .
           if [[ -n "$(git status --porcelain)" ]]; then
-            git commit -m "chore: automated update $(date -u +'%Y-%m-%d')" -m "[skip ci]" || exit 0 
+            git commit -m "$COMMIT_MSG" -m "[skip ci]" || exit 0 
             git push origin HEAD
-          else
-            echo "::notice::no changes, skipping push"
-          fi
+          fi          
 
       - name: 清理构建现场
         if: always()
