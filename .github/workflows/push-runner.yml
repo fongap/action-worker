@@ -86,25 +86,25 @@ jobs:
 
       - name: Node环境配置
         if: env.RUNTIME == 'node'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ steps.versions.outputs.node_version }}
 
       - name: Python环境配置
         if: env.RUNTIME == 'python'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ steps.versions.outputs.python_version }}
 
       - name: Go环境配置
         if: env.RUNTIME == 'go'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ steps.versions.outputs.go_version }}
 
       - name: 构建缓存恢复
         if: env.RUNTIME == 'node'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.local/bin/hugo
