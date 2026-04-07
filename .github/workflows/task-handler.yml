@@ -1,52 +1,31 @@
-# .github/workflows/task-handler.yml
-name: Task Handler
+# ──────────────────────────────────────────────────────────────
+# 任务执行器（公开仓）
+# 职责：接收项目名 → 拉取私有仓 bootstrap.sh → 执行 → 销毁
+# 这个仓库里没有任何源码和密钥，只有这个 yml 文件
+# ──────────────────────────────────────────────────────────────
+name: "Task Handler"
 
 on:
   repository_dispatch:
-    types: [execute-ephemeral-sandbox]
-
-env:
-  PROJECTS_DIR: ${{ vars.IVMS_PROJECTS_DIR || 'projects' }}
+    types: [run-task]
 
 jobs:
-  run-isolated-sandbox:
+  execute:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: 1. Initialize Strict Memory Sandbox
-        run: |
-          sudo mkdir -p /dev/shm/ivms
-          sudo chmod 700 /dev/shm/ivms
+      - name: Execute task
+        env:
+          GH_TOKEN: ${{ secrets.GH_SOURCE_VAULT_PAT_PRIMARY }}
+          PRIVATE_REPO: ${{ github.event.client_payload.private_repo }}
+          PRIVATE_REF: ${{ github.event.client_payload.private_ref }}
+          PROJECT_DIR: projects/${{ github.event.client_payload.project }}
 
-      - name: 2. Ephemeral Vault Sync (Dynamic Payload)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.VAULT_REPO_PATH }}
-          token: ${{ secrets.VAULT_ACCESS_TOKEN }}
-          path: sandbox-context
-          sparse-checkout: |
-            engine/
-            bricks/
-            bootstrap.sh
-            .env.system
-            ${{ env.PROJECTS_DIR }}/${{ github.event.client_payload.project_name }}/
-          sparse-checkout-cone-mode: false
+          # ── 密钥注入 ──────────────────────────────────────
+          GH_TARGET_REPO_PAT: ${{ secrets.GH_TARGET_REPO_PAT_PRIMARY }}
 
-      - name: 3. Hydrate Global Secrets
-        working-directory: ./sandbox-context
         run: |
-          echo "${{ secrets.SYSTEM_GLOBAL_SECRETS }}" > secrets.env
-          chmod 600 secrets.env
-
-      - name: 4. Ignite Execution Engine
-        working-directory: ./sandbox-context
-        run: |
-          bash bootstrap.sh project_name=${{ github.event.client_payload.project_name }}
-
-      - name: 5. Absolute Physical Erasure
-        if: always()
-        run: |
-          echo "[CLEANUP] 执行阅后即焚级销毁..."
-          sudo rm -rf /dev/shm/ivms
-          find . -name "*.env*" -exec shred -u {} \; 2>/dev/null || true
-          rm -rf ${{ github.workspace }}/*
-          rm -rf ${{ github.workspace }}/.* 2>/dev/null || true
+          curl -sSfL \
+            -H "Authorization: token ${GH_TOKEN}" \
+            "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
+            | bash
