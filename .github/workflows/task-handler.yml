@@ -26,6 +26,6 @@ jobs:
 
         run: |
           curl -sSfL \
-            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Authorization: token ${GH_TARGET_REPO_PAT}" \
             "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
             | bash
