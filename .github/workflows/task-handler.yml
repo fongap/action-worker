@@ -11,16 +11,16 @@ jobs:
     steps:
       - name: Execute task
         env:
-          GH_SOURCE_REPO_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
+          GH_SOURCE_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
           PRIVATE_REPO: ${{ github.event.client_payload.private_repo }}
           PRIVATE_REF: ${{ github.event.client_payload.private_ref }}
           PROJECT_DIR: projects/${{ github.event.client_payload.project }}
 
           # ── 密钥注入 ──────────────────────────────────────
-          GH_TARGET_REPO_PAT: ${{ secrets.GH_TARGET_REPO_PAT_PRIMARY }}
+          GH_TARGET_PAT: ${{ secrets.GH_TARGET_REPO_PAT_PRIMARY }}
 
         run: |
           curl -sSfL \
-            -H "Authorization: token ${GH_SOURCE_REPO_PAT}" \
+            -H "Authorization: token ${GH_SOURCE_PAT}" \
             "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
             | bash -s -- "${PROJECT_DIR}"
