@@ -1,7 +1,7 @@
 name: Badge Updater
 on:
   workflow_run:
-    workflows: ["Cron Runner", "Push Runner"]
+    workflows: ["Task Handler"]
     types: [completed]
 
 permissions:
