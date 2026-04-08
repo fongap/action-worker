@@ -1,9 +1,4 @@
-# ──────────────────────────────────────────────────────────────
-# 任务执行器（公开仓）
-# 职责：接收项目名 → 拉取私有仓 bootstrap.sh → 执行 → 销毁
-# 这个仓库里没有任何源码和密钥，只有这个 yml 文件
-# ──────────────────────────────────────────────────────────────
-name: "Task Handler"
+name: Task Handler
 
 on:
   repository_dispatch:
@@ -16,7 +11,7 @@ jobs:
     steps:
       - name: Execute task
         env:
-          GH_TOKEN: ${{ secrets.GH_SOURCE_VAULT_PAT_PRIMARY }}
+          GH_SOURCE_REPO_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
           PRIVATE_REPO: ${{ github.event.client_payload.private_repo }}
           PRIVATE_REF: ${{ github.event.client_payload.private_ref }}
           PROJECT_DIR: projects/${{ github.event.client_payload.project }}
@@ -26,6 +21,6 @@ jobs:
 
         run: |
           curl -sSfL \
-            -H "Authorization: token ${GH_TARGET_REPO_PAT}" \
+            -H "Authorization: token ${GH_SOURCE_REPO_PAT}" \
             "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
-            | bash
+            | bash -s -- "${PROJECT_DIR}"
