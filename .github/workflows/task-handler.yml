@@ -5,20 +5,31 @@ on:
     types: [run-task]
 
 jobs:
-  execute:
+  任务执行:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Execute task
+      - name: 引擎注入
+        id: executor
         env:
+          # 核心密钥池注入
           GHOST_SECRET_POOL: ${{ toJSON(secrets) }}
+          # 私有仓访问令牌
           GH_SOURCE_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
+          # 目标配置路径
           PRIVATE_REPO: ${{ github.event.client_payload.private_repo }}
           PRIVATE_REF: ${{ github.event.client_payload.private_ref }}
           PROJECT_DIR: projects/${{ github.event.client_payload.project }}
-
         run: |
+          # 鉴权下载并直接注入内存执行，不在公开仓留存物理文件
           curl -sSfL \
             -H "Authorization: token ${GH_SOURCE_PAT}" \
             "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
             | bash -s -- "${PROJECT_DIR}"
+
+      - name: 状态同步
+        if: always()
+        run: |
+          # 捕获并回显自 bootstrap.sh 传递的执行指标
+          echo "执行状态：${{ steps.executor.outputs.pipeline_status }}"
+          echo "返回代码：${{ steps.executor.outputs.exit_code }}"            
