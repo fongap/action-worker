@@ -5,7 +5,7 @@ on:
     types: [run-task]
 
 jobs:
-  任务执行:
+  execute:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
