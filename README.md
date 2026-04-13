@@ -1,7 +1,7 @@
 # 🚀 Action Worker
 
 ![构建状态](https://img.shields.io/github/actions/workflow/status/fongap/action-worker/badge-updater.yml?label=构建状态&logo=githubactions&logoColor=white&color=28a745)
-![最近更新](https://img.shields.io/badge/最近更新-2026--04--12-007acc?logo=git&logoColor=white&color=007acc)
+![最近更新](https://img.shields.io/badge/最近更新-2026--04--13-007acc?logo=git&logoColor=white&color=007acc)
 ![核心语言](https://img.shields.io/badge/核心语言-YAML-6f42c1?logo=github&logoColor=white&color=6f42c1)
 ![数据规模](https://img.shields.io/github/repo-size/fongap/action-worker?label=数据规模&logo=databricks&logoColor=white&color=4682b4)
 ![开源许可](https://img.shields.io/badge/开源许可-MIT%20License-d97706?logo=opensourceinitiative&logoColor=white)
@@ -47,4 +47,4 @@
 > 💡 **使用提示**：
 > 
 > 部分任务脚本可能需要额外的运行时参数（如云服务凭证），同样需通过本仓库的 `secrets and variables` 集中管理。
-<!-- LAST_SYNC: 2026-04-12 23:50:39 -->
+<!-- LAST_SYNC: 2026-04-13 00:16:40 -->
