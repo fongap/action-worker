@@ -5,20 +5,28 @@ on:
     types: [run-task]
 
 jobs:
-  execute:
+  Execute:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
-      - name: Execute task
+      - name: 引擎注入
+        id: executor
         env:
           GHOST_SECRET_POOL: ${{ toJSON(secrets) }}
           GH_SOURCE_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
           PRIVATE_REPO: ${{ github.event.client_payload.private_repo }}
           PRIVATE_REF: ${{ github.event.client_payload.private_ref }}
           PROJECT_DIR: projects/${{ github.event.client_payload.project }}
-
+        # 脚本最后的 exit "${TASK_EXIT}" 会直接决定此步骤的 ❌ 或 ✅
         run: |
           curl -sSfL \
             -H "Authorization: token ${GH_SOURCE_PAT}" \
             "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
             | bash -s -- "${PROJECT_DIR}"
+
+      - name: 状态同步
+        if: always()
+        run: |
+          # 即使上一步显示红叉，这一步仍能提取出具体的执行指标并回显
+          echo "最终状态: ${{ steps.executor.outputs.pipeline_status }}"
+          echo "退出代码: ${{ steps.executor.outputs.exit_code }}"          
