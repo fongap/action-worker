@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: 检出源码仓库
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 文档徽章更新
         run: |
