@@ -9,24 +9,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
-      - name: 引擎注入
+      - name: Execute job
         id: executor
         env:
           GHOST_SECRET_POOL: ${{ toJSON(secrets) }}
           GH_SOURCE_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
-          PRIVATE_REPO: ${{ github.event.client_payload.private_repo }}
-          PRIVATE_REF: ${{ github.event.client_payload.private_ref }}
-          PROJECT_DIR: projects/${{ github.event.client_payload.project }}
-        # 脚本最后的 exit "${TASK_EXIT}" 会直接决定此步骤的 ❌ 或 ✅
+          PRIVATE_REPO: ${{ secrets.GH_SOURCE_REPO_PRIMARY }}
+          PRIVATE_REF: ${{ github.event.client_payload.private_ref || 'main' }}
+          PROJECT_DIR: ${{ github.event.client_payload.project }}
         run: |
+          if [[ ! "$PRIVATE_REF" =~ ^[a-zA-Z0-9_.-]+$ ]] || [[ ! "$PROJECT_DIR" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+              echo "非法参数输入！" >&2
+              exit 1
+          fi
+          
           curl -sSfL \
             -H "Authorization: token ${GH_SOURCE_PAT}" \
             "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
-            | bash -s -- "${PROJECT_DIR}"
-
-      - name: 状态同步
-        if: always()
-        run: |
-          # 即使上一步显示红叉，这一步仍能提取出具体的执行指标并回显
-          echo "最终状态: ${{ steps.executor.outputs.pipeline_status }}"
-          echo "退出代码: ${{ steps.executor.outputs.exit_code }}"          
+            | bash -s -- "${PROJECT_DIR}"            
