@@ -1,11 +1,11 @@
+<div align="center">
+    
 # Action Worker
 
-> **公开入口，受控执行**  
-> 基于 GitHub Actions 的轻量任务调度层。
+[![Task Handler](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml/badge.svg)](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Action Worker 负责接收任务、校验输入、控制并发与启动执行；构建、发布、同步等业务逻辑全部下沉至执行仓。
-
-## 架构
 
 ```mermaid
 flowchart TB
@@ -32,3 +32,4 @@ flowchart TB
     E -->|检出 · 构建| G
     E -->|发布 · 同步| H
 ```
+</div>
