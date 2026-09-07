@@ -5,7 +5,7 @@
 [![Task Handler](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml/badge.svg)](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Action Worker 负责接收任务、校验输入、控制并发与启动执行；构建、发布、同步等业务逻辑全部下沉至执行仓。
+让 GitHub Actions 专注调度，把构建、发布与同步交给真正的执行层。
 
 ```mermaid
 flowchart TB
