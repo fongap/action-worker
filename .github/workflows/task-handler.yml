@@ -90,11 +90,33 @@ jobs:
         env:
           GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
           GH_EXECUTION_REPO_PAT: ${{ secrets.GH_EXECUTION_REPO_PAT }}
-          PROJECT_SECRETS_BUNDLE: ${{ secrets.PROJECT_SECRETS_JSON }}
+          WORKER_SECRETS_JSON: ${{ toJSON(secrets) }}
           PAYLOAD: ${{ toJSON(github.event.client_payload) }}
         run: |
           set -Eeuo pipefail
           IFS=$'\n\t'
+
+          # ---------------------------------------------------------------
+          # 1. 生成内部 PROJECT_SECRETS_BUNDLE（过滤基础设施 Secret）
+          # ---------------------------------------------------------------
+          PROJECT_SECRETS_BUNDLE="$(
+              printf '%s' "${WORKER_SECRETS_JSON}" |
+              jq -c '
+                  del(
+                      .GH_EXECUTION_REPO_PAT,
+                      .GITHUB_TOKEN
+                  )
+              '
+          )"
+
+          export PROJECT_SECRETS_BUNDLE
+          unset WORKER_SECRETS_JSON
+
+          # 验证 Bundle
+          if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -e 'type == "object"' >/dev/null 2>&1; then
+              echo "::error::项目 Secret Bundle 构造失败" >&2
+              exit 1
+          fi
 
           schema_version=$(printf '%s' "$PAYLOAD" | jq -r '.schema_version // empty')
           request_id=$(printf '%s' "$PAYLOAD"     | jq -r '.request_id     // empty')
@@ -120,13 +142,6 @@ jobs:
           if [ -z "${GH_EXECUTION_REPO_PAT:-}" ]; then
               echo "::error::缺少必要 Secret: GH_EXECUTION_REPO_PAT" >&2
               exit 1
-          fi
-
-          if [ -n "${PROJECT_SECRETS_BUNDLE:-}" ]; then
-              if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -e . >/dev/null 2>&1; then
-                  echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON" >&2
-                  exit 1
-              fi
           fi
 
           # Worker 不参与项目目录授权——存在性 / 策略由 bootstrap 校验 internal-vault。

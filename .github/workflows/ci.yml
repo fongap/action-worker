@@ -114,9 +114,21 @@ jobs:
             exit 1
           fi
           
-          # Check that PROJECT_SECRETS_BUNDLE uses PROJECT_SECRETS_JSON secret
-          if ! grep -q 'PROJECT_SECRETS_BUNDLE: \${{ secrets.PROJECT_SECRETS_JSON }}' "$WORKFLOW"; then
-            echo "::error::PROJECT_SECRETS_BUNDLE 未绑定 PROJECT_SECRETS_JSON Secret" >&2
+          # Check that WORKER_SECRETS_JSON uses toJSON(secrets)
+          if ! grep -q 'WORKER_SECRETS_JSON: \${{ toJSON(secrets) }}' "$WORKFLOW"; then
+            echo "::error::WORKER_SECRETS_JSON 未绑定 toJSON(secrets)" >&2
+            exit 1
+          fi
+          
+          # Check that PROJECT_SECRETS_BUNDLE is generated internally
+          if ! grep -q 'PROJECT_SECRETS_BUNDLE="' "$WORKFLOW"; then
+            echo "::error::PROJECT_SECRETS_BUNDLE 未在脚本内生成" >&2
+            exit 1
+          fi
+          
+          # Check that infrastructure secrets are filtered from bundle
+          if ! grep -A 10 'jq -c' "$WORKFLOW" | grep -q 'del(' || ! grep -A 15 'jq -c' "$WORKFLOW" | grep -q '.GH_EXECUTION_REPO_PAT'; then
+            echo "::error::Bundle 未过滤基础设施 Secret" >&2
             exit 1
           fi
           
