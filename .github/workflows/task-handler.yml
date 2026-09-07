@@ -13,73 +13,143 @@ concurrency:
 jobs:
   execute:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 65
+
     steps:
       - name: Execute task
         env:
-          GH_SOURCE_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
-          PRIVATE_REPO: ${{ secrets.GH_SOURCE_REPO_PRIMARY }}
-          PRIVATE_REF: ${{ github.event.client_payload.bootstrap_ref || 'main' }}
-          PROJECT_DIR: ${{ github.event.client_payload.project }}
+          PROJECT: ${{ github.event.client_payload.project }}
+          BOOTSTRAP_REF: ${{ github.event.client_payload.bootstrap_ref }}
+
+          PROJECT_ALLOWLIST: ${{ vars.PROJECT_ALLOWLIST }}
+
+          GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
+          GH_EXECUTION_REPO_PAT: ${{ secrets.GH_EXECUTION_REPO_PAT }}
+
         run: |
           set -Eeuo pipefail
 
+          # ============================================================
+          # 必要配置
+          # ============================================================
+
+          [[ -n "${PROJECT:-}" ]] || {
+              echo "::error::缺少 project" >&2
+              exit 64
+          }
+
+          [[ -n "${BOOTSTRAP_REF:-}" ]] || {
+              echo "::error::缺少 bootstrap_ref" >&2
+              exit 64
+          }
+
+          [[ -n "${PROJECT_ALLOWLIST:-}" ]] || {
+              echo "::error::缺少必要 Variable: PROJECT_ALLOWLIST" >&2
+              exit 1
+          }
+
+          [[ -n "${GH_EXECUTION_REPO:-}" ]] || {
+              echo "::error::缺少必要 Variable: GH_EXECUTION_REPO" >&2
+              exit 1
+          }
+
+          [[ -n "${GH_EXECUTION_REPO_PAT:-}" ]] || {
+              echo "::error::缺少必要 Secret: GH_EXECUTION_REPO_PAT" >&2
+              exit 1
+          }
+
+          echo "::add-mask::${GH_EXECUTION_REPO_PAT}"
+
+          # ============================================================
+          # Task Info
+          # ============================================================
+
           echo "::group::Task Info"
-          echo "Project      : ${PROJECT_DIR}"
-          echo "Bootstrap Ref: ${PRIVATE_REF}"
+          echo "Project      : ${PROJECT}"
+          echo "Bootstrap Ref: ${BOOTSTRAP_REF}"
           echo "Run ID       : ${GITHUB_RUN_ID}"
           echo "Actor        : ${GITHUB_ACTOR}"
           echo "Runner OS    : ${RUNNER_OS}"
           echo "Start Time   : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
           echo "::endgroup::"
 
-          if [[ ! "$PROJECT_DIR" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
-              echo "::error::非法项目名称: ${PROJECT_DIR}" >&2
+          # ============================================================
+          # Project 校验
+          # ============================================================
+
+          if [[ ! "${PROJECT}" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+              echo "::error::非法项目名称: ${PROJECT}" >&2
               exit 64
           fi
 
-          case "$PROJECT_DIR" in
-              FongapBlog|Delta|AI-Gateway)
-                  ;;
-              *)
-                  echo "::error::未知项目: ${PROJECT_DIR}" >&2
-                  exit 64
-                  ;;
-          esac
+          allowed=false
+          IFS=',' read -ra allowed_projects <<< "${PROJECT_ALLOWLIST}"
 
-          if [[ ! "$PRIVATE_REF" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
-              echo "::error::非法 bootstrap_ref: ${PRIVATE_REF}" >&2
+          for item in "${allowed_projects[@]}"; do
+              item="${item#"${item%%[![:space:]]*}"}"
+              item="${item%"${item##*[![:space:]]}"}"
+
+              if [[ "${PROJECT}" == "${item}" ]]; then
+                  allowed=true
+                  break
+              fi
+          done
+
+          if [[ "${allowed}" != "true" ]]; then
+              echo "::error::未授权项目: ${PROJECT}" >&2
               exit 64
           fi
+
+          # ============================================================
+          # Commit 固定
+          # ============================================================
+
+          if [[ ! "${BOOTSTRAP_REF}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::bootstrap_ref 必须为完整 40 位 Commit SHA" >&2
+              exit 64
+          fi
+
+          # ============================================================
+          # Bootstrap
+          # ============================================================
 
           TMP_SCRIPT="$(mktemp)"
+
           cleanup() {
-              rm -f "$TMP_SCRIPT"
+              rm -f "${TMP_SCRIPT}"
           }
+
           trap cleanup EXIT
 
-          BOOTSTRAP_URL="https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh"
+          BOOTSTRAP_URL="https://raw.githubusercontent.com/${GH_EXECUTION_REPO}/${BOOTSTRAP_REF}/bootstrap.sh"
 
-          echo "Downloading bootstrap script from ${BOOTSTRAP_URL} ..."
+          echo "Downloading bootstrap script..."
+
           if ! curl -fsSL \
-              -H "Authorization: token ${GH_SOURCE_PAT}" \
-              "$BOOTSTRAP_URL" \
-              -o "$TMP_SCRIPT"; then
+              -H "Authorization: Bearer ${GH_EXECUTION_REPO_PAT}" \
+              "${BOOTSTRAP_URL}" \
+              -o "${TMP_SCRIPT}"; then
+
               echo "::error::下载 bootstrap.sh 失败" >&2
               exit 1
           fi
 
-          chmod 700 "$TMP_SCRIPT"
+          chmod 700 "${TMP_SCRIPT}"
 
-          echo "Executing bootstrap.sh with project: ${PROJECT_DIR}"
-          if ! bash "$TMP_SCRIPT" "$PROJECT_DIR"; then
+          echo "Executing bootstrap.sh with project: ${PROJECT}"
+
+          if ! bash "${TMP_SCRIPT}" "${PROJECT}"; then
               echo "::error::bootstrap.sh 执行失败" >&2
               exit 1
           fi
 
+          # ============================================================
+          # Result
+          # ============================================================
+
           echo "::group::Task Result"
-          echo "Project      : ${PROJECT_DIR}"
+          echo "Project      : ${PROJECT}"
           echo "Result       : SUCCESS"
           echo "Exit Code    : 0"
           echo "End Time     : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-          echo "::endgroup::"            
+          echo "::endgroup::"
