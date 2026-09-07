@@ -88,3 +88,36 @@ jobs:
 
       - name: Run validator sync test
         run: bash tests/test-validator-sync.sh
+
+  workflow-contract:
+    name: Workflow contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify execute job has dynamic environment binding
+        run: |
+          set -e
+          WORKFLOW=".github/workflows/task-handler.yml"
+          
+          # Check that execute job has environment binding with dynamic project name
+          if ! grep -A 5 'jobs:' "$WORKFLOW" | grep -A 5 'execute:' | grep -q 'environment:'; then
+            echo "::error::execute job 缺少 environment 绑定" >&2
+            exit 1
+          fi
+          
+          # Check that environment.name uses client_payload.project
+          if ! grep -A 10 'jobs:' "$WORKFLOW" | grep -A 10 'execute:' | grep -q 'name: \${{ github.event.client_payload.project }}'; then
+            echo "::error::environment.name 未使用动态项目名 \${{ github.event.client_payload.project }}" >&2
+            exit 1
+          fi
+          
+          # Check that PROJECT_SECRETS_BUNDLE uses PROJECT_SECRETS_JSON secret
+          if ! grep -q 'PROJECT_SECRETS_BUNDLE: \${{ secrets.PROJECT_SECRETS_JSON }}' "$WORKFLOW"; then
+            echo "::error::PROJECT_SECRETS_BUNDLE 未绑定 PROJECT_SECRETS_JSON Secret" >&2
+            exit 1
+          fi
+          
+          echo "OK: workflow contract 验证通过"
