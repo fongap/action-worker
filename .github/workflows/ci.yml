@@ -1,0 +1,90 @@
+name: Worker CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# CI 只读 checkout；生产 worker 仍保持 permissions: {}
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run actionlint
+        uses: rhysd/actionlint@v1
+        with:
+          ignore: none
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: |
+          set -e
+          find scripts tests -type f -name '*.sh' -print0 | xargs -0 -n1 shellcheck --severity=warning
+
+  yaml-syntax:
+    name: YAML syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pyyaml
+        run: pip install --quiet pyyaml
+
+      - name: Validate YAML
+        run: |
+          set -e
+          python3 -c "
+          import sys, yaml, glob
+          rc = 0
+          for path in sorted(glob.glob('.github/workflows/*.y*ml', recursive=True)):
+              with open(path) as f:
+                  try:
+                      yaml.safe_load(f)
+                      print(f'OK: {path}')
+                  except yaml.YAMLError as e:
+                      print(f'FAIL: {path}: {e}', file=sys.stderr)
+                      rc = 1
+          sys.exit(rc)
+          "
+
+  payload-validation:
+    name: Payload validation tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run payload validation tests
+        run: bash tests/test-payload-validation.sh
+
+      - name: Run validator sync test
+        run: bash tests/test-validator-sync.sh
