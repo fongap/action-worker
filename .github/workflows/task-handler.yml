@@ -4,26 +4,82 @@ on:
   repository_dispatch:
     types: [run-task]
 
+permissions: {}
+
+concurrency:
+  group: action-worker-${{ github.event.client_payload.project }}
+  cancel-in-progress: false
+
 jobs:
-  Execute:
-    runs-on: ubuntu-latest
+  execute:
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
-      - name: Execute job
-        id: executor
+      - name: Execute task
         env:
-          GHOST_SECRET_POOL: ${{ toJSON(secrets) }}
           GH_SOURCE_PAT: ${{ secrets.GH_SOURCE_REPO_PAT_PRIMARY }}
           PRIVATE_REPO: ${{ secrets.GH_SOURCE_REPO_PRIMARY }}
-          PRIVATE_REF: ${{ github.event.client_payload.private_ref || 'main' }}
+          PRIVATE_REF: ${{ github.event.client_payload.bootstrap_ref || 'main' }}
           PROJECT_DIR: ${{ github.event.client_payload.project }}
         run: |
-          if [[ ! "$PRIVATE_REF" =~ ^[a-zA-Z0-9_.-]+$ ]] || [[ ! "$PROJECT_DIR" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
-              echo "非法参数输入！" >&2
+          set -Eeuo pipefail
+
+          echo "::group::Task Info"
+          echo "Project      : ${PROJECT_DIR}"
+          echo "Bootstrap Ref: ${PRIVATE_REF}"
+          echo "Run ID       : ${GITHUB_RUN_ID}"
+          echo "Actor        : ${GITHUB_ACTOR}"
+          echo "Runner OS    : ${RUNNER_OS}"
+          echo "Start Time   : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo "::endgroup::"
+
+          if [[ ! "$PROJECT_DIR" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+              echo "::error::非法项目名称: ${PROJECT_DIR}" >&2
+              exit 64
+          fi
+
+          case "$PROJECT_DIR" in
+              FongapBlog|Delta|AI-Gateway)
+                  ;;
+              *)
+                  echo "::error::未知项目: ${PROJECT_DIR}" >&2
+                  exit 64
+                  ;;
+          esac
+
+          if [[ ! "$PRIVATE_REF" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+              echo "::error::非法 bootstrap_ref: ${PRIVATE_REF}" >&2
+              exit 64
+          fi
+
+          TMP_SCRIPT="$(mktemp)"
+          cleanup() {
+              rm -f "$TMP_SCRIPT"
+          }
+          trap cleanup EXIT
+
+          BOOTSTRAP_URL="https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh"
+
+          echo "Downloading bootstrap script from ${BOOTSTRAP_URL} ..."
+          if ! curl -fsSL \
+              -H "Authorization: token ${GH_SOURCE_PAT}" \
+              "$BOOTSTRAP_URL" \
+              -o "$TMP_SCRIPT"; then
+              echo "::error::下载 bootstrap.sh 失败" >&2
               exit 1
           fi
-          
-          curl -sSfL \
-            -H "Authorization: token ${GH_SOURCE_PAT}" \
-            "https://raw.githubusercontent.com/${PRIVATE_REPO}/${PRIVATE_REF}/bootstrap.sh" \
-            | bash -s -- "${PROJECT_DIR}"            
+
+          chmod 700 "$TMP_SCRIPT"
+
+          echo "Executing bootstrap.sh with project: ${PROJECT_DIR}"
+          if ! bash "$TMP_SCRIPT" "$PROJECT_DIR"; then
+              echo "::error::bootstrap.sh 执行失败" >&2
+              exit 1
+          fi
+
+          echo "::group::Task Result"
+          echo "Project      : ${PROJECT_DIR}"
+          echo "Result       : SUCCESS"
+          echo "Exit Code    : 0"
+          echo "End Time     : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo "::endgroup::"            
