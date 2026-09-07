@@ -12,13 +12,25 @@ flowchart TB
     A[调用方]
     B[Action Worker]
     C[GitHub Runner]
-    D[执行仓]
-    E[项目 / 目标环境]
+
+    subgraph R["执行仓"]
+        D[bootstrap.sh]
+        E[执行引擎]
+        F[项目配置]
+    end
+
+    G[项目仓]
+    H[目标环境]
 
     A -->|repository_dispatch| B
     B -->|校验 · 调度| C
-    C -->|获取 bootstrap.sh| D
-    D -->|执行引擎| E
+
+    C -->|获取指定版本| D
+    D --> E
+    E --> F
+
+    C -->|按执行逻辑操作| G
+    C -->|构建 · 发布 · 同步| H
 ```
 
 ## 执行
