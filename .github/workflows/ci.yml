@@ -55,6 +55,3 @@ jobs:
 
       - name: Run payload tests
         run: bash tests/test-payload-validation.sh
-
-      - name: Run declaration resolution tests
-        run: bash tests/test-declaration-resolution.sh

@@ -69,8 +69,7 @@ jobs:
         env:
           GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
           GH_EXECUTION_REPO_PAT: ${{ secrets.GH_EXECUTION_REPO_PAT }}
-          AVAILABLE_SECRETS_JSON: ${{ toJSON(secrets) }}
-          AVAILABLE_VARS_JSON: ${{ toJSON(vars) }}
+          PROJECT_SECRETS_JSON: ${{ secrets.PROJECT_SECRETS_JSON }}
           SCHEMA_VERSION: ${{ needs.validate.outputs.schema_version }}
           REQUEST_ID: ${{ needs.validate.outputs.request_id }}
           PROJECT: ${{ needs.validate.outputs.project }}
@@ -89,6 +88,21 @@ jobs:
               exit 1
           fi
 
+          PROJECT_SECRETS_JSON="${PROJECT_SECRETS_JSON:-{}}"
+
+          if ! printf '%s' "$PROJECT_SECRETS_JSON" |
+              jq -e 'type == "object"' >/dev/null 2>&1; then
+              echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON 对象。" >&2
+              exit 1
+          fi
+
+          PROJECT_SECRETS_BUNDLE="$(
+              printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.'
+          )"
+
+          export PROJECT_SECRETS_BUNDLE
+          unset PROJECT_SECRETS_JSON
+
           echo "::group::Task Info"
           echo "Run ID        : ${GITHUB_RUN_ID}"
           echo "Request ID    : ${REQUEST_ID}"
@@ -101,13 +115,11 @@ jobs:
 
           TMPDIR_WORK="$(mktemp -d)"
           TMP_SCRIPT="$TMPDIR_WORK/bootstrap.sh"
-          TMP_SECRETS="$TMPDIR_WORK/secrets.required"
-          TMP_ENVVARS="$TMPDIR_WORK/env.variables"
 
           cleanup() {
               unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
-              unset AVAILABLE_SECRETS_JSON 2>/dev/null || true
-              unset AVAILABLE_VARS_JSON 2>/dev/null || true
+              unset PROJECT_SECRETS_JSON 2>/dev/null || true
+              unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
               rm -rf "$TMPDIR_WORK"
           }
 
@@ -178,15 +190,6 @@ jobs:
               exit 1
           fi
 
-          echo "Downloading project declarations ..."
-          download_file "${RAW_BASE}/projects/${PROJECT}/.secrets.required" "$TMP_SECRETS" || exit 1
-          download_file "${RAW_BASE}/projects/${PROJECT}/.env.variables" "$TMP_ENVVARS" || exit 1
-
-          echo "Resolving declarations ..."
-          bash scripts/resolve-declarations.sh "$TMP_SECRETS" "$TMP_ENVVARS"
-          unset AVAILABLE_SECRETS_JSON
-          unset AVAILABLE_VARS_JSON
-
           chmod 700 "$TMP_SCRIPT"
 
           echo "Executing bootstrap.sh ..."
@@ -197,8 +200,6 @@ jobs:
           bash "$TMP_SCRIPT" "$PROJECT" "$BOOTSTRAP_REF" "$REQUEST_ID"
           bootstrap_rc=$?
           set -e
-
-          unset GH_EXECUTION_REPO_PAT
 
           echo "::group::Task Result"
           echo "Request ID    : ${REQUEST_ID}"
