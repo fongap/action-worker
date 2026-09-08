@@ -54,9 +54,6 @@ jobs:
 
     permissions: {}
 
-    environment:
-      name: ${{ needs.validate.outputs.project }}
-
     concurrency:
       group: action-worker-${{ needs.validate.outputs.project }}
       cancel-in-progress: false
@@ -67,9 +64,9 @@ jobs:
 
       - name: Execute task
         env:
+          GHOST_SECRET_POOL: ${{ toJSON(secrets) }}
           GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
           GH_EXECUTION_REPO_PAT: ${{ secrets.GH_EXECUTION_REPO_PAT }}
-          PROJECT_SECRETS_BUNDLE: ${{ secrets.PROJECT_SECRETS_BUNDLE }}
           SCHEMA_VERSION: ${{ needs.validate.outputs.schema_version }}
           REQUEST_ID: ${{ needs.validate.outputs.request_id }}
           PROJECT: ${{ needs.validate.outputs.project }}
@@ -88,12 +85,12 @@ jobs:
               exit 1
           fi
 
-          if [ -z "${PROJECT_SECRETS_BUNDLE:-}" ]; then
-              echo "::error::当前 Environment 缺少 PROJECT_SECRETS_BUNDLE。" >&2
+          if [ -z "${GHOST_SECRET_POOL:-}" ]; then
+              echo "::error::当前 Environment 缺少 GHOST_SECRET_POOL。" >&2
               exit 1
           fi
 
-          export PROJECT_SECRETS_BUNDLE
+          export GHOST_SECRET_POOL
 
           echo "::group::Task Info"
           echo "Run ID        : ${GITHUB_RUN_ID}"
@@ -110,7 +107,7 @@ jobs:
 
           cleanup() {
               unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
-              unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
+              unset GHOST_SECRET_POOL 2>/dev/null || true
               rm -rf "$TMPDIR_WORK"
           }
 

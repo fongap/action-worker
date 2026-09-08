@@ -56,5 +56,5 @@ jobs:
       - name: Run payload tests
         run: bash tests/test-payload-validation.sh
 
-      - name: Run secrets bundle tests
-        run: bash tests/test-project-secrets-bundle.sh
+      - name: Run secrets pool tests
+        run: bash tests/test-ghost-secret-pool.sh
