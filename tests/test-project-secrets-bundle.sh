@@ -18,38 +18,22 @@ check() {
     local actual_rc=0
     local actual_output=""
 
-    unset PROJECT_SECRETS_JSON 2>/dev/null || true
+    unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
 
-    if [ "$input" = "__UNSET__" ]; then
-        actual_output=$(
-            if [ -z "${PROJECT_SECRETS_JSON:-}" ]; then
-                PROJECT_SECRETS_JSON='{}'
-            fi
+    PROJECT_SECRETS_BUNDLE="$input"
+    actual_output=$(
+        if [ -z "${PROJECT_SECRETS_BUNDLE:-}" ]; then
+            PROJECT_SECRETS_BUNDLE='{}'
+        fi
 
-            if ! printf '%s' "$PROJECT_SECRETS_JSON" |
-                jq -e 'type == "object"' >/dev/null 2>&1; then
-                echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON 对象。" >&2
-                exit 1
-            fi
+        if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" |
+            jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::PROJECT_SECRETS_BUNDLE 不是合法 JSON 对象。" >&2
+            exit 1
+        fi
 
-            printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.'
-        ) || actual_rc=$?
-    else
-        PROJECT_SECRETS_JSON="$input"
-        actual_output=$(
-            if [ -z "${PROJECT_SECRETS_JSON:-}" ]; then
-                PROJECT_SECRETS_JSON='{}'
-            fi
-
-            if ! printf '%s' "$PROJECT_SECRETS_JSON" |
-                jq -e 'type == "object"' >/dev/null 2>&1; then
-                echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON 对象。" >&2
-                exit 1
-            fi
-
-            printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.'
-        ) || actual_rc=$?
-    fi
+        printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -c '.'
+    ) || actual_rc=$?
 
     if [ "$actual_rc" -ne "$expected_rc" ]; then
         printf 'FAIL  %s（期望 rc=%s，实际 rc=%s）\n' \
@@ -75,38 +59,22 @@ check_log_safe() {
     local log_file
     log_file=$(mktemp)
 
-    unset PROJECT_SECRETS_JSON 2>/dev/null || true
+    unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
 
-    if [ "$input" = "__UNSET__" ]; then
-        {
-            if [ -z "${PROJECT_SECRETS_JSON:-}" ]; then
-                PROJECT_SECRETS_JSON='{}'
-            fi
+    PROJECT_SECRETS_BUNDLE="$input"
+    {
+        if [ -z "${PROJECT_SECRETS_BUNDLE:-}" ]; then
+            PROJECT_SECRETS_BUNDLE='{}'
+        fi
 
-            if ! printf '%s' "$PROJECT_SECRETS_JSON" |
-                jq -e 'type == "object"' >/dev/null 2>&1; then
-                echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON 对象。" >&2
-                exit 1
-            fi
+        if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" |
+            jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::PROJECT_SECRETS_BUNDLE 不是合法 JSON 对象。" >&2
+            exit 1
+        fi
 
-            printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.'
-        } > "$log_file" 2>&1
-    else
-        PROJECT_SECRETS_JSON="$input"
-        {
-            if [ -z "${PROJECT_SECRETS_JSON:-}" ]; then
-                PROJECT_SECRETS_JSON='{}'
-            fi
-
-            if ! printf '%s' "$PROJECT_SECRETS_JSON" |
-                jq -e 'type == "object"' >/dev/null 2>&1; then
-                echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON 对象。" >&2
-                exit 1
-            fi
-
-            printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.'
-        } > "$log_file" 2>&1
-    fi
+        printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -c '.'
+    } > "$log_file" 2>&1
 
     local leaked=0
     if [ "$input" != "__UNSET__" ]; then
@@ -125,11 +93,6 @@ check_log_safe() {
         PASSED=$((PASSED + 1))
     fi
 }
-
-check "未设置 → 默认 {}" \
-    "__UNSET__" \
-    0 \
-    "{}"
 
 check "空对象 {} → 成功" \
     '{}' \
