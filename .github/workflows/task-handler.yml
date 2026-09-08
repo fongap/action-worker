@@ -76,12 +76,12 @@ jobs:
           IFS=$'\n\t'
 
           if [ -z "${GH_EXECUTION_REPO:-}" ]; then
-              echo "::error::任务未启动：当前项目 Environment 缺少 GH_EXECUTION_REPO。" >&2
+              echo "::error::当前 Environment 缺少 GH_EXECUTION_REPO。" >&2
               exit 1
           fi
 
           if [ -z "${GH_EXECUTION_REPO_PAT:-}" ]; then
-              echo "::error::任务未启动：当前项目 Environment 缺少 GH_EXECUTION_REPO_PAT。" >&2
+              echo "::error::当前 Environment 缺少 GH_EXECUTION_REPO_PAT。" >&2
               exit 1
           fi
 
@@ -89,19 +89,13 @@ jobs:
 
           if ! printf '%s' "$PROJECT_SECRETS_JSON" |
               jq -e 'type == "object"' >/dev/null 2>&1; then
-              echo "::error::任务未启动：PROJECT_SECRETS_JSON 必须是合法的 JSON 对象。" >&2
+              echo "::error::PROJECT_SECRETS_JSON 不是合法 JSON 对象。" >&2
               exit 1
           fi
 
           PROJECT_SECRETS_BUNDLE="$(printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.')"
           export PROJECT_SECRETS_BUNDLE
           unset PROJECT_SECRETS_JSON
-
-          echo "::add-mask::${GH_EXECUTION_REPO_PAT}"
-
-          if [ "$PROJECT_SECRETS_BUNDLE" != "{}" ]; then
-              echo "::add-mask::${PROJECT_SECRETS_BUNDLE}"
-          fi
 
           echo "::group::Task Info"
           echo "Run ID        : ${GITHUB_RUN_ID}"
@@ -117,7 +111,6 @@ jobs:
 
           cleanup() {
               unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
-              unset PROJECT_SECRETS_JSON 2>/dev/null || true
               unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
               rm -f "$TMP_SCRIPT"
           }
@@ -166,9 +159,9 @@ jobs:
               done
 
               if [ "$curl_rc" -ne 0 ]; then
-                  echo "::error::任务未启动：下载 bootstrap.sh 时发生网络错误（curl ${curl_rc}），请稍后重试。" >&2
+                  echo "::error::bootstrap.sh 下载失败。" >&2
               else
-                  echo "::error::任务未启动：无法下载 bootstrap.sh（HTTP ${http_code}），请检查执行仓、Commit SHA 和 PAT 读取权限。" >&2
+                  echo "::error::bootstrap.sh 下载失败。" >&2
               fi
 
               return 1
@@ -178,12 +171,12 @@ jobs:
           download_bootstrap || exit 1
 
           if [ ! -s "$TMP_SCRIPT" ]; then
-              echo "::error::任务未启动：下载到的 bootstrap.sh 为空。" >&2
+              echo "::error::bootstrap.sh 为空。" >&2
               exit 1
           fi
 
           if ! bash -n "$TMP_SCRIPT"; then
-              echo "::error::任务未启动：bootstrap.sh 存在 Shell 语法错误。" >&2
+              echo "::error::bootstrap.sh Shell 语法错误。" >&2
               exit 1
           fi
 
@@ -201,20 +194,14 @@ jobs:
           unset GH_EXECUTION_REPO_PAT
           unset PROJECT_SECRETS_BUNDLE
 
-          if env | grep -q '^GH_EXECUTION_REPO_PAT='; then
-              echo "::error::任务异常终止：执行凭据未能及时清理。" >&2
-              exit 1
-          fi
-
           echo "::group::Task Result"
           echo "Request ID    : ${REQUEST_ID}"
           echo "Project       : ${PROJECT}"
           echo "Bootstrap Ref : ${BOOTSTRAP_REF}"
-          echo "Exit Code     : ${bootstrap_rc}"
           echo "End Time      : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
           echo "::endgroup::"
 
           if [ "$bootstrap_rc" -ne 0 ]; then
               echo "::error::bootstrap.sh 执行失败。" >&2
-              exit "$bootstrap_rc"
+              exit 1
           fi
