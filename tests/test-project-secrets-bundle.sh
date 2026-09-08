@@ -25,16 +25,16 @@ check_fail() {
     FAILED=$((FAILED + 1))
 }
 
-if grep -qF 'toJSON(secrets)' "$WORKFLOW"; then
-    check_pass "workflow 使用 toJSON(secrets)"
+if grep -qF 'secrets.PROJECT_SECRETS_BUNDLE' "$WORKFLOW"; then
+    check_pass "workflow 使用 secrets.PROJECT_SECRETS_BUNDLE"
 else
-    check_fail "workflow 使用 toJSON(secrets)" "未找到 toJSON(secrets)"
+    check_fail "workflow 使用 secrets.PROJECT_SECRETS_BUNDLE" "未找到 secrets.PROJECT_SECRETS_BUNDLE"
 fi
 
-if grep -qF 'PROJECT_SECRETS_BUNDLE: ${{ toJSON(secrets) }}' "$WORKFLOW"; then
-    check_pass "workflow 注入 PROJECT_SECRETS_BUNDLE"
+if ! grep -qE 'toJSON\s*\(\s*secrets\s*\)' "$WORKFLOW"; then
+    check_pass "workflow 不包含 toJSON(secrets)"
 else
-    check_fail "workflow 注入 PROJECT_SECRETS_BUNDLE" "env 中未定义 PROJECT_SECRETS_BUNDLE"
+    check_fail "workflow 不包含 toJSON(secrets)" "发现 toJSON(secrets)"
 fi
 
 if grep -qF 'export PROJECT_SECRETS_BUNDLE' "$WORKFLOW"; then
