@@ -88,7 +88,9 @@ jobs:
               exit 1
           fi
 
-          PROJECT_SECRETS_JSON="${PROJECT_SECRETS_JSON:-{}}"
+          if [ -z "${PROJECT_SECRETS_JSON:-}" ]; then
+              PROJECT_SECRETS_JSON='{}'
+          fi
 
           if ! printf '%s' "$PROJECT_SECRETS_JSON" |
               jq -e 'type == "object"' >/dev/null 2>&1; then
