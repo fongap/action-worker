@@ -66,7 +66,7 @@ jobs:
         env:
           GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
           GH_EXECUTION_REPO_PAT: ${{ secrets.GH_EXECUTION_REPO_PAT }}
-          WORKER_SECRETS_JSON: ${{ toJSON(secrets) }}
+          PROJECT_SECRETS_JSON: ${{ secrets.PROJECT_SECRETS_JSON }}
           SCHEMA_VERSION: ${{ needs.validate.outputs.schema_version }}
           REQUEST_ID: ${{ needs.validate.outputs.request_id }}
           PROJECT: ${{ needs.validate.outputs.project }}
@@ -85,25 +85,23 @@ jobs:
               exit 1
           fi
 
-          if ! PROJECT_SECRETS_BUNDLE="$(
-              printf '%s' "$WORKER_SECRETS_JSON" |
-              jq -ce '
-                  if type == "object" then
-                      del(.GH_EXECUTION_REPO_PAT, .GITHUB_TOKEN)
-                  else
-                      error("secrets is not an object")
-                  end
-              '
-          )"; then
-              echo "::error::任务未启动：项目 Secrets 读取失败，请检查当前 Environment 配置。" >&2
+          PROJECT_SECRETS_JSON="${PROJECT_SECRETS_JSON:-{}}"
+
+          if ! printf '%s' "$PROJECT_SECRETS_JSON" |
+              jq -e 'type == "object"' >/dev/null 2>&1; then
+              echo "::error::任务未启动：PROJECT_SECRETS_JSON 必须是合法的 JSON 对象。" >&2
               exit 1
           fi
 
+          PROJECT_SECRETS_BUNDLE="$(printf '%s' "$PROJECT_SECRETS_JSON" | jq -c '.')"
           export PROJECT_SECRETS_BUNDLE
-          unset WORKER_SECRETS_JSON
+          unset PROJECT_SECRETS_JSON
 
           echo "::add-mask::${GH_EXECUTION_REPO_PAT}"
-          echo "::add-mask::${PROJECT_SECRETS_BUNDLE}"
+
+          if [ "$PROJECT_SECRETS_BUNDLE" != "{}" ]; then
+              echo "::add-mask::${PROJECT_SECRETS_BUNDLE}"
+          fi
 
           echo "::group::Task Info"
           echo "Run ID        : ${GITHUB_RUN_ID}"
@@ -119,8 +117,8 @@ jobs:
 
           cleanup() {
               unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
+              unset PROJECT_SECRETS_JSON 2>/dev/null || true
               unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
-              unset WORKER_SECRETS_JSON 2>/dev/null || true
               rm -f "$TMP_SCRIPT"
           }
 
