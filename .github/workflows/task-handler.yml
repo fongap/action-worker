@@ -30,11 +30,10 @@ jobs:
               echo "::add-mask::${PAYLOAD}"
           fi
 
-          # >>> BEGIN_VALIDATOR_BODY — 与 scripts/validate-payload.sh 保持一致
           SUPPORTED_SCHEMA_VERSIONS=("1")
 
           if ! printf '%s' "$PAYLOAD" | jq -e . >/dev/null 2>&1; then
-              echo "::error::payload 不是合法 JSON" >&2
+              echo "::error::任务未启动：请求数据不是合法 JSON，请检查调用参数。" >&2
               exit 64
           fi
 
@@ -44,7 +43,7 @@ jobs:
           bootstrap_ref=$(printf '%s' "$PAYLOAD"  | jq -r '.bootstrap_ref  // empty')
 
           if [ -z "$schema_version" ] || [ -z "$request_id" ] || [ -z "$project" ] || [ -z "$bootstrap_ref" ]; then
-              echo "::error::payload 缺少必要字段 (schema_version / request_id / project / bootstrap_ref)" >&2
+              echo "::error::任务未启动：请求缺少必要字段，请确认 schema_version、request_id、project、bootstrap_ref 均已传入。" >&2
               exit 64
           fi
 
@@ -55,23 +54,24 @@ jobs:
                   break
               fi
           done
+
           if [ "$supported" -ne 1 ]; then
-              echo "::error::不支持的 schema_version: ${schema_version}" >&2
+              echo "::error::任务未启动：schema_version=${schema_version} 暂不支持，当前仅支持版本 1。" >&2
               exit 65
           fi
 
           if ! [[ "$request_id" =~ ^[A-Za-z0-9_.-]{1,128}$ ]]; then
-              echo "::error::非法 request_id" >&2
+              echo "::error::任务未启动：request_id 格式不正确，只允许字母、数字、点、横线和下划线。" >&2
               exit 64
           fi
 
           if ! [[ "$project" =~ ^[A-Za-z0-9_.-]+$ ]]; then
-              echo "::error::非法项目名称: ${project}" >&2
+              echo "::error::任务未启动：项目名称 '${project}' 格式不正确。" >&2
               exit 64
           fi
 
           if ! [[ "$bootstrap_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
-              echo "::error::bootstrap_ref 必须为完整 40 位 Commit SHA" >&2
+              echo "::error::任务未启动：bootstrap_ref 必须使用完整的 40 位 Commit SHA。" >&2
               exit 64
           fi
 
@@ -80,11 +80,11 @@ jobs:
               [ keys[] | select(. as $k | $allowed | index($k) | not) ]
               | join(",")
           ')
+
           if [ -n "$unknown" ]; then
-              echo "::error::payload 包含未知字段: ${unknown}" >&2
+              echo "::error::任务未启动：发现不支持的请求字段：${unknown}。请删除后重试。" >&2
               exit 64
           fi
-          # <<< END_VALIDATOR_BODY
 
       - name: Execute task
         env:
@@ -96,9 +96,6 @@ jobs:
           set -Eeuo pipefail
           IFS=$'\n\t'
 
-          # ---------------------------------------------------------------
-          # 1. 生成内部 PROJECT_SECRETS_BUNDLE（过滤基础设施 Secret）
-          # ---------------------------------------------------------------
           PROJECT_SECRETS_BUNDLE="$(
               printf '%s' "${WORKER_SECRETS_JSON}" |
               jq -c '
@@ -112,9 +109,8 @@ jobs:
           export PROJECT_SECRETS_BUNDLE
           unset WORKER_SECRETS_JSON
 
-          # 验证 Bundle
           if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -e 'type == "object"' >/dev/null 2>&1; then
-              echo "::error::项目 Secret Bundle 构造失败" >&2
+              echo "::error::任务未启动：项目 Secrets 读取失败，请检查对应 GitHub Environment 的 Secrets 配置。" >&2
               exit 1
           fi
 
@@ -123,33 +119,24 @@ jobs:
           project=$(printf '%s' "$PAYLOAD"        | jq -r '.project        // empty')
           bootstrap_ref=$(printf '%s' "$PAYLOAD"  | jq -r '.bootstrap_ref  // empty')
 
-          # 日志脱敏：在使用之前先遮罩凭据
           if [ -n "${GH_EXECUTION_REPO_PAT:-}" ]; then
               echo "::add-mask::${GH_EXECUTION_REPO_PAT}"
           fi
+
           if [ -n "${PROJECT_SECRETS_BUNDLE:-}" ]; then
               echo "::add-mask::${PROJECT_SECRETS_BUNDLE}"
           fi
 
-          # ---------------------------------------------------------------
-          # 1. Fail-Fast：必要配置
-          # ---------------------------------------------------------------
           if [ -z "${GH_EXECUTION_REPO:-}" ]; then
-              echo "::error::缺少必要 Variable: GH_EXECUTION_REPO" >&2
+              echo "::error::任务未启动：缺少 GH_EXECUTION_REPO，请在当前项目 Environment 的 Variables 中配置。" >&2
               exit 1
           fi
 
           if [ -z "${GH_EXECUTION_REPO_PAT:-}" ]; then
-              echo "::error::缺少必要 Secret: GH_EXECUTION_REPO_PAT" >&2
+              echo "::error::任务未启动：缺少 GH_EXECUTION_REPO_PAT，请在当前项目 Environment 的 Secrets 中配置。" >&2
               exit 1
           fi
 
-          # Worker 不参与项目目录授权——存在性 / 策略由 bootstrap 校验 internal-vault。
-          # dispatch 凭据（GH_ACTION_WORKER_PAT）由调用方持有，Worker 不读取也不验证它。
-
-          # ---------------------------------------------------------------
-          # 2. 日志：只输出非敏感上下文
-          # ---------------------------------------------------------------
           echo "::group::Task Info"
           echo "Run ID        : ${GITHUB_RUN_ID}"
           echo "Request ID    : ${request_id}"
@@ -160,13 +147,15 @@ jobs:
           echo "Start Time    : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
           echo "::endgroup::"
 
-          # ---------------------------------------------------------------
-          # 3. 下载 bootstrap.sh@SHA（严格失败 + 有限重试 + 超时）
-          # ---------------------------------------------------------------
           TMP_SCRIPT="$(mktemp -t bootstrap.XXXXXX.sh)"
+
           cleanup() {
+              unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
+              unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
+              unset WORKER_SECRETS_JSON 2>/dev/null || true
               rm -f "$TMP_SCRIPT"
           }
+
           trap cleanup EXIT
 
           BOOTSTRAP_URL="https://raw.githubusercontent.com/${GH_EXECUTION_REPO}/${bootstrap_ref}/bootstrap.sh"
@@ -176,81 +165,70 @@ jobs:
               local max_attempts=3
               local http_code=000
               local curl_rc=0
+
               while [ "$attempt" -le "$max_attempts" ]; do
                   : > "$TMP_SCRIPT"
-                  http_code=$(curl -sSL \
+
+                  if http_code=$(curl -sSL \
                       --connect-timeout 15 \
                       --max-time 60 \
                       --retry 0 \
                       -H "Authorization: Bearer ${GH_EXECUTION_REPO_PAT}" \
                       -o "$TMP_SCRIPT" \
                       -w "%{http_code}" \
-                      "$BOOTSTRAP_URL" || true)
-                  curl_rc=$?
+                      "$BOOTSTRAP_URL"); then
+                      curl_rc=0
+                  else
+                      curl_rc=$?
+                  fi
 
-                  # 2xx 视为成功
                   case "$http_code" in
                       2*) return 0 ;;
-                  esac
-
-                  # 4xx 是终态错误（权限/不存在），不重试
-                  case "$http_code" in
                       4*) break ;;
                   esac
 
-                  # 网络类 / 5xx 才重试
                   attempt=$((attempt + 1))
+
                   if [ "$attempt" -le "$max_attempts" ]; then
-                      echo "::warning::bootstrap 下载失败 (http=${http_code}, attempt=$((attempt-1))/${max_attempts})，重试中..." >&2
+                      echo "::warning::启动脚本下载失败（HTTP ${http_code}），正在重试 $((attempt-1))/${max_attempts}..." >&2
                       sleep $((attempt * 2))
                   fi
               done
 
-              echo "::error::下载 bootstrap.sh 失败: http=${http_code} curl_rc=${curl_rc}" >&2
+              echo "::error::任务未启动：无法下载 bootstrap.sh（HTTP ${http_code}）。请检查执行仓库、Commit SHA 以及 PAT 的仓库读取权限。" >&2
               return 1
           }
 
           echo "Downloading bootstrap script ..."
+
           if ! download_bootstrap; then
               exit 1
           fi
 
           chmod 700 "$TMP_SCRIPT"
 
-          # ---------------------------------------------------------------
-          # 4. 执行 bootstrap
-          #    bootstrap 负责：克隆 internal-vault@SHA，校验 .secrets.required，
-          #    在执行项目命令前 unset GH_EXECUTION_REPO_PAT。
-          # ---------------------------------------------------------------
           echo "Executing bootstrap.sh ..."
+
           bootstrap_rc=0
           set +e
           bash "$TMP_SCRIPT" "$project" "$bootstrap_ref" "$request_id"
           bootstrap_rc=$?
           set -e
 
-          # ---------------------------------------------------------------
-          # 5. 凭据生命周期：bootstrap 退出后立即清空 Vault 读取凭据
-          #    契约：bootstrap 必须在 exec 项目命令之前 unset GH_EXECUTION_REPO_PAT；
-          #    此处再做一次防御性 unset + 验证。
-          # ---------------------------------------------------------------
           unset GH_EXECUTION_REPO_PAT
+          unset PROJECT_SECRETS_BUNDLE
+          unset WORKER_SECRETS_JSON 2>/dev/null || true
 
-          # 防御性验证：当前进程及子进程 env 中均不得残留 Vault PAT
           if [ -n "${GH_EXECUTION_REPO_PAT:-}" ]; then
-              echo "::error::凭据清理失败：GH_EXECUTION_REPO_PAT 仍存在于环境" >&2
+              echo "::error::任务异常终止：安全凭据清理失败，请检查 worker 执行流程。" >&2
               exit 1
           fi
+
           if env | grep -q '^GH_EXECUTION_REPO_PAT='; then
-              echo "::error::凭据清理失败：env 中检测到 GH_EXECUTION_REPO_PAT" >&2
+              echo "::error::任务异常终止：运行环境仍存在敏感凭据，请检查 worker 执行流程。" >&2
               exit 1
           fi
 
-          echo "Vault credential 已从 worker 进程环境清空"
-
-          # ---------------------------------------------------------------
-          # 6. 结果摘要（脱敏）
-          # ---------------------------------------------------------------
           if [ "$bootstrap_rc" -ne 0 ]; then
               echo "::group::Task Result"
               echo "Request ID    : ${request_id}"
@@ -260,6 +238,7 @@ jobs:
               echo "Exit Code     : ${bootstrap_rc}"
               echo "End Time      : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
               echo "::endgroup::"
+              echo "::error::任务执行失败（退出码 ${bootstrap_rc}）。请查看上方最后一条错误信息定位具体原因。" >&2
               exit "$bootstrap_rc"
           fi
 

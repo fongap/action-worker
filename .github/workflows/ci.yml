@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# CI 只读 checkout；生产 worker 仍保持 permissions: {}
 permissions:
   contents: read
 
@@ -19,6 +18,7 @@ jobs:
     name: actionlint
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +32,7 @@ jobs:
     name: shellcheck
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,12 +43,14 @@ jobs:
       - name: Run shellcheck
         run: |
           set -e
-          find scripts tests -type f -name '*.sh' -print0 | xargs -0 -n1 shellcheck --severity=warning
+          find scripts tests -type f -name '*.sh' -print0 |
+            xargs -0 -n1 shellcheck --severity=warning
 
   yaml-syntax:
     name: YAML syntax
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,15 +63,18 @@ jobs:
           set -e
           python3 -c "
           import sys, yaml, glob
+
           rc = 0
+
           for path in sorted(glob.glob('.github/workflows/*.y*ml', recursive=True)):
               with open(path) as f:
                   try:
                       yaml.safe_load(f)
                       print(f'OK: {path}')
                   except yaml.YAMLError as e:
-                      print(f'FAIL: {path}: {e}', file=sys.stderr)
+                      print(f'FAIL: YAML 格式错误：{path}: {e}', file=sys.stderr)
                       rc = 1
+
           sys.exit(rc)
           "
 
@@ -76,6 +82,7 @@ jobs:
     name: Payload validation tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -93,43 +100,45 @@ jobs:
     name: Workflow contract
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify execute job has dynamic environment binding
+      - name: Verify workflow contract
         run: |
           set -e
+
           WORKFLOW=".github/workflows/task-handler.yml"
-          
-          # Check that execute job has environment binding with dynamic project name
-          if ! grep -A 5 'jobs:' "$WORKFLOW" | grep -A 5 'execute:' | grep -q 'environment:'; then
-            echo "::error::execute job 缺少 environment 绑定" >&2
-            exit 1
+
+          if ! grep -A 5 'jobs:' "$WORKFLOW" |
+              grep -A 5 'execute:' |
+              grep -q 'environment:'; then
+              echo "::error::工作流契约错误：execute job 缺少 environment 配置。" >&2
+              exit 1
           fi
-          
-          # Check that environment.name uses client_payload.project
-          if ! grep -A 10 'jobs:' "$WORKFLOW" | grep -A 10 'execute:' | grep -q 'name: \${{ github.event.client_payload.project }}'; then
-            echo "::error::environment.name 未使用动态项目名 \${{ github.event.client_payload.project }}" >&2
-            exit 1
+
+          if ! grep -A 10 'jobs:' "$WORKFLOW" |
+              grep -A 10 'execute:' |
+              grep -q 'name: \${{ github.event.client_payload.project }}'; then
+              echo "::error::工作流契约错误：environment.name 必须绑定 github.event.client_payload.project。" >&2
+              exit 1
           fi
-          
-          # Check that WORKER_SECRETS_JSON uses toJSON(secrets)
+
           if ! grep -q 'WORKER_SECRETS_JSON: \${{ toJSON(secrets) }}' "$WORKFLOW"; then
-            echo "::error::WORKER_SECRETS_JSON 未绑定 toJSON(secrets)" >&2
-            exit 1
+              echo "::error::工作流契约错误：WORKER_SECRETS_JSON 必须绑定 toJSON(secrets)。" >&2
+              exit 1
           fi
-          
-          # Check that PROJECT_SECRETS_BUNDLE is generated internally
+
           if ! grep -q 'PROJECT_SECRETS_BUNDLE="' "$WORKFLOW"; then
-            echo "::error::PROJECT_SECRETS_BUNDLE 未在脚本内生成" >&2
-            exit 1
+              echo "::error::工作流契约错误：未检测到 PROJECT_SECRETS_BUNDLE 生成逻辑。" >&2
+              exit 1
           fi
-          
-          # Check that infrastructure secrets are filtered from bundle
-          if ! grep -A 10 'jq -c' "$WORKFLOW" | grep -q 'del(' || ! grep -A 15 'jq -c' "$WORKFLOW" | grep -q '.GH_EXECUTION_REPO_PAT'; then
-            echo "::error::Bundle 未过滤基础设施 Secret" >&2
-            exit 1
+
+          if ! grep -A 10 'jq -c' "$WORKFLOW" | grep -q 'del(' ||
+             ! grep -A 15 'jq -c' "$WORKFLOW" | grep -q '.GH_EXECUTION_REPO_PAT'; then
+              echo "::error::工作流契约错误：PROJECT_SECRETS_BUNDLE 必须过滤 GH_EXECUTION_REPO_PAT。" >&2
+              exit 1
           fi
-          
-          echo "OK: workflow contract 验证通过"
+
+          echo "OK: workflow contract"
