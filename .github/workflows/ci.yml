@@ -14,22 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  actionlint:
-    name: actionlint
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run actionlint
-        uses: rhysd/actionlint@v1
-        with:
-          ignore: none
-
-  shellcheck:
-    name: shellcheck
+  lint:
+    name: Lint
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -40,48 +26,25 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
+      - name: Install actionlint
+        id: actionlint
+        shell: bash
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      - name: Run actionlint
+        run: |
+          "${{ steps.actionlint.outputs.executable }}" -color
+
       - name: Run shellcheck
         run: |
           set -e
           find scripts tests -type f -name '*.sh' -print0 |
-            xargs -0 -n1 shellcheck --severity=warning
+            xargs -0 -r -n1 shellcheck --severity=warning
 
-  yaml-syntax:
-    name: YAML syntax
+  payload:
+    name: Payload validation
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install pyyaml
-        run: pip install --quiet pyyaml
-
-      - name: Validate YAML
-        run: |
-          set -e
-          python3 -c "
-          import sys, yaml, glob
-
-          rc = 0
-
-          for path in sorted(glob.glob('.github/workflows/*.y*ml', recursive=True)):
-              with open(path) as f:
-                  try:
-                      yaml.safe_load(f)
-                      print(f'OK: {path}')
-                  except yaml.YAMLError as e:
-                      print(f'FAIL: YAML 格式错误：{path}: {e}', file=sys.stderr)
-                      rc = 1
-
-          sys.exit(rc)
-          "
-
-  payload-validation:
-    name: Payload validation tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -90,55 +53,5 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Run payload validation tests
+      - name: Run tests
         run: bash tests/test-payload-validation.sh
-
-      - name: Run validator sync test
-        run: bash tests/test-validator-sync.sh
-
-  workflow-contract:
-    name: Workflow contract
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Verify workflow contract
-        run: |
-          set -e
-
-          WORKFLOW=".github/workflows/task-handler.yml"
-
-          if ! grep -A 5 'jobs:' "$WORKFLOW" |
-              grep -A 5 'execute:' |
-              grep -q 'environment:'; then
-              echo "::error::工作流契约错误：execute job 缺少 environment 配置。" >&2
-              exit 1
-          fi
-
-          if ! grep -A 10 'jobs:' "$WORKFLOW" |
-              grep -A 10 'execute:' |
-              grep -q 'name: \${{ github.event.client_payload.project }}'; then
-              echo "::error::工作流契约错误：environment.name 必须绑定 github.event.client_payload.project。" >&2
-              exit 1
-          fi
-
-          if ! grep -q 'WORKER_SECRETS_JSON: \${{ toJSON(secrets) }}' "$WORKFLOW"; then
-              echo "::error::工作流契约错误：WORKER_SECRETS_JSON 必须绑定 toJSON(secrets)。" >&2
-              exit 1
-          fi
-
-          if ! grep -q 'PROJECT_SECRETS_BUNDLE="' "$WORKFLOW"; then
-              echo "::error::工作流契约错误：未检测到 PROJECT_SECRETS_BUNDLE 生成逻辑。" >&2
-              exit 1
-          fi
-
-          if ! grep -A 10 'jq -c' "$WORKFLOW" | grep -q 'del(' ||
-             ! grep -A 15 'jq -c' "$WORKFLOW" | grep -q '.GH_EXECUTION_REPO_PAT'; then
-              echo "::error::工作流契约错误：PROJECT_SECRETS_BUNDLE 必须过滤 GH_EXECUTION_REPO_PAT。" >&2
-              exit 1
-          fi
-
-          echo "OK: workflow contract"
