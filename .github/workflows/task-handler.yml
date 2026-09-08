@@ -177,13 +177,6 @@ jobs:
           echo "Downloading bootstrap script ..."
           download_bootstrap || exit 1
 
-          unset GH_EXECUTION_REPO_PAT
-
-          if env | grep -q '^GH_EXECUTION_REPO_PAT='; then
-              echo "::error::任务异常终止：执行凭据未能及时清理。" >&2
-              exit 1
-          fi
-
           if [ ! -s "$TMP_SCRIPT" ]; then
               echo "::error::任务未启动：下载到的 bootstrap.sh 为空。" >&2
               exit 1
@@ -205,7 +198,13 @@ jobs:
           bootstrap_rc=$?
           set -e
 
+          unset GH_EXECUTION_REPO_PAT
           unset PROJECT_SECRETS_BUNDLE
+
+          if env | grep -q '^GH_EXECUTION_REPO_PAT='; then
+              echo "::error::任务异常终止：执行凭据未能及时清理。" >&2
+              exit 1
+          fi
 
           echo "::group::Task Result"
           echo "Request ID    : ${REQUEST_ID}"
@@ -216,6 +215,6 @@ jobs:
           echo "::endgroup::"
 
           if [ "$bootstrap_rc" -ne 0 ]; then
-              echo "::error::任务执行失败（退出码 ${bootstrap_rc}），请查看上方最后一条错误信息。" >&2
+              echo "::error::bootstrap.sh 执行失败。" >&2
               exit "$bootstrap_rc"
           fi
