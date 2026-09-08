@@ -53,5 +53,8 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Run tests
+      - name: Run payload tests
         run: bash tests/test-payload-validation.sh
+
+      - name: Run declaration resolution tests
+        run: bash tests/test-declaration-resolution.sh
