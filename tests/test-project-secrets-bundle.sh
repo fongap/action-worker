@@ -2,135 +2,64 @@
 
 set -u
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "ERROR: jq is required to run this test." >&2
+WORKFLOW=".github/workflows/task-handler.yml"
+
+if [ ! -f "$WORKFLOW" ]; then
+    echo "ERROR: $WORKFLOW not found." >&2
     exit 1
 fi
 
 PASSED=0
 FAILED=0
 
-check() {
+check_pass() {
     local name="$1"
-    local input="$2"
-    local expected_rc="$3"
-    local expected_output="${4:-}"
-    local actual_rc=0
-    local actual_output=""
-
-    unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
-
-    PROJECT_SECRETS_BUNDLE="$input"
-    actual_output=$(
-        if [ -z "${PROJECT_SECRETS_BUNDLE:-}" ]; then
-            PROJECT_SECRETS_BUNDLE='{}'
-        fi
-
-        if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" |
-            jq -e 'type == "object"' >/dev/null 2>&1; then
-            echo "::error::PROJECT_SECRETS_BUNDLE 不是合法 JSON 对象。" >&2
-            exit 1
-        fi
-
-        printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -c '.'
-    ) || actual_rc=$?
-
-    if [ "$actual_rc" -ne "$expected_rc" ]; then
-        printf 'FAIL  %s（期望 rc=%s，实际 rc=%s）\n' \
-            "$name" "$expected_rc" "$actual_rc" >&2
-        FAILED=$((FAILED + 1))
-        return
-    fi
-
-    if [ -n "$expected_output" ] && [ "$actual_output" != "$expected_output" ]; then
-        printf 'FAIL  %s（期望输出=%s，实际输出=%s）\n' \
-            "$name" "$expected_output" "$actual_output" >&2
-        FAILED=$((FAILED + 1))
-        return
-    fi
-
     printf 'PASS  %s\n' "$name"
     PASSED=$((PASSED + 1))
 }
 
-check_log_safe() {
+check_fail() {
     local name="$1"
-    local input="$2"
-    local log_file
-    log_file=$(mktemp)
-
-    unset PROJECT_SECRETS_BUNDLE 2>/dev/null || true
-
-    PROJECT_SECRETS_BUNDLE="$input"
-    {
-        if [ -z "${PROJECT_SECRETS_BUNDLE:-}" ]; then
-            PROJECT_SECRETS_BUNDLE='{}'
-        fi
-
-        if ! printf '%s' "$PROJECT_SECRETS_BUNDLE" |
-            jq -e 'type == "object"' >/dev/null 2>&1; then
-            echo "::error::PROJECT_SECRETS_BUNDLE 不是合法 JSON 对象。" >&2
-            exit 1
-        fi
-
-        printf '%s' "$PROJECT_SECRETS_BUNDLE" | jq -c '.'
-    } > "$log_file" 2>&1
-
-    local leaked=0
-    if [ "$input" != "__UNSET__" ]; then
-        if grep -qF "$input" "$log_file" 2>/dev/null; then
-            leaked=1
-        fi
-    fi
-
-    rm -f "$log_file"
-
-    if [ "$leaked" -eq 1 ]; then
-        printf 'FAIL  %s（JSON 内容泄露到日志）\n' "$name" >&2
-        FAILED=$((FAILED + 1))
-    else
-        printf 'PASS  %s\n' "$name"
-        PASSED=$((PASSED + 1))
-    fi
+    local reason="$2"
+    printf 'FAIL  %s（%s）\n' "$name" "$reason" >&2
+    FAILED=$((FAILED + 1))
 }
 
-check "空对象 {} → 成功" \
-    '{}' \
-    0 \
-    "{}"
+if grep -qF 'toJSON(secrets)' "$WORKFLOW"; then
+    check_pass "workflow 使用 toJSON(secrets)"
+else
+    check_fail "workflow 使用 toJSON(secrets)" "未找到 toJSON(secrets)"
+fi
 
-check "正常 JSON 对象 → 内容不变" \
-    '{"CF_ACCOUNT_ID":"abc123","CF_TOKEN":"secret456"}' \
-    0 \
-    '{"CF_ACCOUNT_ID":"abc123","CF_TOKEN":"secret456"}'
+if grep -qF 'PROJECT_SECRETS_BUNDLE: ${{ toJSON(secrets) }}' "$WORKFLOW"; then
+    check_pass "workflow 注入 PROJECT_SECRETS_BUNDLE"
+else
+    check_fail "workflow 注入 PROJECT_SECRETS_BUNDLE" "env 中未定义 PROJECT_SECRETS_BUNDLE"
+fi
 
-check "包含多个 Secret 的 JSON → 成功" \
-    '{"KEY1":"val1","KEY2":"val2","KEY3":"val3"}' \
-    0 \
-    '{"KEY1":"val1","KEY2":"val2","KEY3":"val3"}'
+if grep -qF 'export PROJECT_SECRETS_BUNDLE' "$WORKFLOW"; then
+    check_pass "workflow export PROJECT_SECRETS_BUNDLE"
+else
+    check_fail "workflow export PROJECT_SECRETS_BUNDLE" "未找到 export PROJECT_SECRETS_BUNDLE"
+fi
 
-check "非 JSON → 失败" \
-    'not json' \
-    1
+if grep -qF 'unset PROJECT_SECRETS_BUNDLE' "$WORKFLOW"; then
+    check_pass "cleanup unset PROJECT_SECRETS_BUNDLE"
+else
+    check_fail "cleanup unset PROJECT_SECRETS_BUNDLE" "未找到 unset PROJECT_SECRETS_BUNDLE"
+fi
 
-check "JSON array → 失败" \
-    '["item1","item2"]' \
-    1
+if ! grep -qE '(echo|printf)\s.*\$PROJECT_SECRETS_BUNDLE' "$WORKFLOW"; then
+    check_pass "workflow 不直接输出 PROJECT_SECRETS_BUNDLE"
+else
+    check_fail "workflow 不直接输出 PROJECT_SECRETS_BUNDLE" "发现 echo/printf 输出 \$PROJECT_SECRETS_BUNDLE"
+fi
 
-check "JSON string → 失败" \
-    '"just a string"' \
-    1
-
-check "JSON number → 失败" \
-    '12345' \
-    1
-
-check "JSON null → 失败" \
-    'null' \
-    1
-
-check_log_safe "日志中不泄露 JSON 内容" \
-    '{"SECRET_KEY":"super_secret_value_12345"}'
+if grep -qF 'set -x' "$WORKFLOW"; then
+    check_fail "workflow 不启用 set -x" "发现 set -x"
+else
+    check_pass "workflow 不启用 set -x"
+fi
 
 printf '\nResult: passed=%s failed=%s\n' "$PASSED" "$FAILED"
 
