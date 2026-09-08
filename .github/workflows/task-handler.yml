@@ -54,6 +54,13 @@ jobs:
 
     permissions: {}
 
+    env:
+      GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
+      SCHEMA_VERSION: ${{ needs.validate.outputs.schema_version }}
+      REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+      PROJECT: ${{ needs.validate.outputs.project }}
+      BOOTSTRAP_REF: ${{ needs.validate.outputs.bootstrap_ref }}
+
     concurrency:
       group: action-worker-${{ needs.validate.outputs.project }}
       cancel-in-progress: false
@@ -62,35 +69,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Snapshot base environment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          compgen -e |
+            LC_ALL=C sort -u \
+            > "${RUNNER_TEMP}/action-worker-base-env.names"
+
+          chmod 600 "${RUNNER_TEMP}/action-worker-base-env.names"
+
       - name: Execute task
-        env:
-          GHOST_SECRET_POOL: ${{ toJSON(secrets) }}
-          GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
-          GH_EXECUTION_REPO_PAT: ${{ secrets.GH_EXECUTION_REPO_PAT }}
-          SCHEMA_VERSION: ${{ needs.validate.outputs.schema_version }}
-          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
-          PROJECT: ${{ needs.validate.outputs.project }}
-          BOOTSTRAP_REF: ${{ needs.validate.outputs.bootstrap_ref }}
+        env: ${{ secrets }}
         run: |
           set -Eeuo pipefail
           IFS=$'\n\t'
 
           if [ -z "${GH_EXECUTION_REPO:-}" ]; then
-              echo "::error::当前 Environment 缺少 GH_EXECUTION_REPO。" >&2
+              echo "::error::缺少 GH_EXECUTION_REPO。" >&2
               exit 1
           fi
 
           if [ -z "${GH_EXECUTION_REPO_PAT:-}" ]; then
-              echo "::error::当前 Environment 缺少 GH_EXECUTION_REPO_PAT。" >&2
+              echo "::error::缺少 GH_EXECUTION_REPO_PAT。" >&2
               exit 1
           fi
-
-          if [ -z "${GHOST_SECRET_POOL:-}" ]; then
-              echo "::error::当前 Environment 缺少 GHOST_SECRET_POOL。" >&2
-              exit 1
-          fi
-
-          export GHOST_SECRET_POOL
 
           echo "::group::Task Info"
           echo "Run ID        : ${GITHUB_RUN_ID}"
@@ -107,7 +111,7 @@ jobs:
 
           cleanup() {
               unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
-              unset GHOST_SECRET_POOL 2>/dev/null || true
+              rm -f "${RUNNER_TEMP}/action-worker-base-env.names" 2>/dev/null || true
               rm -rf "$TMPDIR_WORK"
           }
 
