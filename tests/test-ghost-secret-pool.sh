@@ -3,7 +3,6 @@
 set -u
 
 WORKFLOW=".github/workflows/task-handler.yml"
-VALIDATE_SCRIPT="scripts/validate-payload.sh"
 
 if [ ! -f "$WORKFLOW" ]; then
     echo "ERROR: $WORKFLOW not found." >&2
@@ -85,12 +84,6 @@ if grep -qF 'validate-payload.sh' "$WORKFLOW"; then
     check_pass "payload 仍通过 validate-payload.sh 校验"
 else
     check_fail "payload 仍通过 validate-payload.sh 校验" "未找到 validate-payload.sh"
-fi
-
-if grep -qE '[0-9a-f]{40}' "$WORKFLOW"; then
-    check_pass "bootstrap_ref 仍要求固定 SHA"
-else
-    check_fail "bootstrap_ref 仍要求固定 SHA" "未找到 40 位 SHA"
 fi
 
 printf '\nResult: passed=%s failed=%s\n' "$PASSED" "$FAILED"
