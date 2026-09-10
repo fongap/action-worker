@@ -2,6 +2,7 @@
 
 # Action Worker
 
+[![Task Handler](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml/badge.svg?event=repository_dispatch)](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml)
 [![Worker CI](https://github.com/fongap/action-worker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fongap/action-worker/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
