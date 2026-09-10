@@ -5,8 +5,6 @@
 [![Task Handler](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml/badge.svg)](https://github.com/fongap/action-worker/actions/workflows/task-handler.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-让 GitHub Actions 专注调度，把构建、发布与同步交给真正的执行层。
-
 </div>
 
 ## 这是什么
