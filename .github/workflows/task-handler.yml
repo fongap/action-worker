@@ -153,7 +153,11 @@ jobs:
                   esac
 
                   if [ "$attempt" -lt "$max_attempts" ]; then
-                      echo "::warning::下载失败（HTTP ${http_code}），准备重试 ${attempt}/${max_attempts}。" >&2
+                      if [ "$curl_rc" -ne 0 ]; then
+                          echo "::warning::下载失败（curl=${curl_rc}, HTTP=${http_code}），准备重试 ${attempt}/${max_attempts}。" >&2
+                      else
+                          echo "::warning::下载失败（HTTP ${http_code}），准备重试 ${attempt}/${max_attempts}。" >&2
+                      fi
                       sleep $((attempt * 2))
                   fi
 
@@ -161,9 +165,22 @@ jobs:
               done
 
               if [ "$curl_rc" -ne 0 ]; then
-                  echo "::error::下载失败。" >&2
+                  echo "::error::下载 bootstrap.sh 失败：网络/curl 错误（curl=${curl_rc}, HTTP=${http_code}）。" >&2
               else
-                  echo "::error::下载失败。" >&2
+                  case "$http_code" in
+                      401|403)
+                          echo "::error::下载 bootstrap.sh 失败：GitHub 鉴权被拒绝（HTTP ${http_code}）。" >&2
+                          ;;
+                      404)
+                          echo "::error::下载 bootstrap.sh 失败：指定 BOOTSTRAP_REF 下未找到文件（HTTP 404）。" >&2
+                          ;;
+                      5*)
+                          echo "::error::下载 bootstrap.sh 失败：GitHub 上游异常（HTTP ${http_code}）。" >&2
+                          ;;
+                      *)
+                          echo "::error::下载 bootstrap.sh 失败（HTTP ${http_code}）。" >&2
+                          ;;
+                  esac
               fi
 
               return 1
@@ -197,10 +214,11 @@ jobs:
           echo "Request ID    : ${REQUEST_ID}"
           echo "Project       : ${PROJECT}"
           echo "Bootstrap Ref : ${BOOTSTRAP_REF}"
+          echo "Exit Code     : ${bootstrap_rc}"
           echo "End Time      : $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
           echo "::endgroup::"
 
           if [ "$bootstrap_rc" -ne 0 ]; then
-              echo "::error::bootstrap.sh 执行失败。" >&2
-              exit 1
+              echo "::error::bootstrap.sh 执行失败（exit=${bootstrap_rc}）。" >&2
+              exit "$bootstrap_rc"
           fi
