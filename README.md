@@ -8,63 +8,45 @@
 
 </div>
 
-## 这是什么
+Action Worker 是一个轻量、公开的 CI/CD 执行中继：接收 `repository_dispatch` 请求，校验协议，获取固定版本的 `bootstrap.sh`，再把具体项目执行交给下游执行仓。
 
-**Action Worker** 是一个解耦「调度」与「执行」的 CI/CD 执行节点。它本身不承载任何具体的构建逻辑，只负责接收任务请求、校验参数、拉取指定版本的执行脚本，再把真正的检出、构建、发布与环境同步工作交给下游的**执行仓**完成。
+它不维护项目白名单、不包含业务构建逻辑，也不应知道任何项目级 Secret 键名。
 
-这样设计带来的好处：
+## 执行链
 
-- **面向私有资产仓**：专为需要拉取私有仓库内容并执行密集型构建/部署任务的场景设计。
-- **调度与执行解耦**：Action Worker 保持轻量，执行逻辑可以独立迭代、独立版本化，互不影响。
-- **可复用的执行层**：任意调用方（其他仓库、内部平台、定时任务）都可以通过标准的 `repository_dispatch` 触发同一套执行流程。
-
-## 工作原理
-
-```mermaid
-flowchart TB
-    A[调用方]
-    B[Action Worker]
-    C[GitHub Runner]
-
-    subgraph R["执行仓"]
-        D[bootstrap.sh]
-        E[执行引擎]
-        F[项目配置]
-    end
-
-    G[项目仓]
-    H[目标环境]
-
-    A -->|repository_dispatch| B
-    B -->|校验 · 调度| C
-    C -->|获取指定版本| D
-
-    D --> E
-    F --> E
-
-    E -->|检出 · 构建| G
-    E -->|发布 · 同步| H
+```text
+调用方
+  ↓ repository_dispatch: run-task
+Action Worker
+  ↓ validate-payload.sh
+GitHub Runner
+  ↓ 获取 bootstrap_ref 对应的 bootstrap.sh
+执行仓 bootstrap
+  ↓
+项目检出 / 构建 / 发布 / 同步
 ```
 
-1. **调用方**通过 `repository_dispatch` 事件（`run-task` 类型）携带任务参数触发 Action Worker。
-2. **Validate 阶段**校验请求参数的格式与合法性，并解析出本次任务的关键信息。
-3. **Execute 阶段**根据参数从指定的执行仓拉取对应版本（commit SHA）的 `bootstrap.sh`，做语法检查后再执行。
-4. `bootstrap.sh` 负责调用执行仓内的执行引擎，完成目标项目仓的检出、构建，并发布/同步到目标环境。
+Action Worker 只负责四件事：
+
+1. 校验 `client_payload`；
+2. 将同一 `project` 的任务串行化；
+3. 从 `GH_EXECUTION_REPO` 获取指定 commit SHA 的 `bootstrap.sh`；
+4. 把 GitHub Secrets 作为通用执行环境交给 bootstrap，由执行仓决定当前项目实际允许使用哪些 Secret。
 
 ## 请求协议
 
-调用方需要向本仓库发送 `repository_dispatch` 事件，`event_type` 固定为 `run-task`，`client_payload` 需包含以下字段：
+`event_type` 固定为 `run-task`，`client_payload` 只允许以下字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `schema_version` | string | 协议版本号，当前仅支持 `"1"` |
-| `request_id` | string | 任务请求 ID，仅允许字母、数字、`.`、`_`、`-`，最长 128 字符 |
-| `project` | string | 目标项目标识，需以字母或数字开头，最长 64 字符 |
-| `bootstrap_ref` | string | 执行脚本所在的完整 40 位 Commit SHA（不接受分支名，避免非固定版本被篡改） |
+| 字段 | 约束 |
+|---|---|
+| `schema_version` | 必填字符串；当前仅支持 `"1"` |
+| `request_id` | `^[A-Za-z0-9_.-]{1,128}$` |
+| `project` | 以字母或数字开头，最长 64 字符 |
+| `bootstrap_ref` | 完整 40 位十六进制 Commit SHA |
 
-所有字段均为必填字符串，且不允许出现协议之外的未知字段，请求会在 Validate 阶段被严格校验并拒绝不合规的调用。
+缺失字段、错误类型、空值、未知字段或不支持的协议版本均在 Validate 阶段拒绝。
 
-### 触发示例
+示例：
 
 ```bash
 curl -X POST \
@@ -82,34 +64,50 @@ curl -X POST \
   }'
 ```
 
-## 配置要求
+## 配置
 
-Execute 阶段依赖以下仓库级配置：
+| 名称 | 类型 | 用途 |
+|---|---|---|
+| `GH_EXECUTION_REPO` | Variable | 执行仓，格式 `owner/repo` |
+| `GH_EXECUTION_REPO_PAT` | Secret | 读取执行仓固定 SHA 下的 `bootstrap.sh` |
 
-| 名称 | 类型 | 说明 |
-| --- | --- | --- |
-| `GH_EXECUTION_REPO` | Variable | 执行仓地址，格式为 `owner/repo` |
-| `GH_EXECUTION_REPO_PAT` | Secret | 拉取执行仓 `bootstrap.sh` 所需的访问凭据 |
+## Secret 边界
 
-任务执行所需的其余密钥（部署凭据、发布 Token 等）通过 workflow 的 `secrets` 上下文注入到 `bootstrap.sh` 的执行环境中，由执行引擎按需读取。
+Action Worker 的核心约束是：**知道 Secret 环境，不知道业务 Secret 语义。**
 
-## 安全设计
+- workflow 不枚举任何业务 Secret 键名；
+- 禁止 `${{ secrets.<name> }}` 形式的项目级命名引用；
+- 禁止 `toJSON(secrets)`；
+- Execute 阶段仅使用通用 `env: ${{ secrets }}` 注入；
+- 基础环境快照只记录变量名，不记录值；
+- dispatch payload 不包含 Secret、task 内容或业务配置；
+- Secret 的项目级筛选、mask、清理和实际使用由执行仓负责。
 
-- `bootstrap_ref` 强制要求完整 40 位 Commit SHA，杜绝使用可变分支名，防止执行脚本在运行期间被替换。
-- 拉取到的 `bootstrap.sh` 会先做 `bash -n` 语法检查，再赋予执行权限并运行，降低脚本损坏或截断带来的风险。
-- 同一 `project` 的任务通过 `concurrency` 分组串行执行，避免并发任务互相干扰同一目标环境。
-- 执行前会快照基础环境变量，便于在任务结束后清理敏感信息，减少凭据残留。
+`GH_EXECUTION_REPO_PAT` 只用于获取固定版本的执行入口。bootstrap 执行结束后，Runner 临时脚本和基础环境快照都会清理。
 
-## 目录结构
+## 执行保证
 
+- `bootstrap_ref` 必须是完整 Commit SHA，不接受分支名；
+- 下载失败区分网络错误、鉴权失败、文件不存在和 GitHub 上游异常；
+- 下载后的 `bootstrap.sh` 必须非空并通过 `bash -n`；
+- 同一 `project` 使用 `concurrency` 串行执行，且不取消进行中的任务；
+- bootstrap 的真实退出码原样作为 Task Handler 结果返回。
+
+## 仓库结构
+
+```text
+.github/workflows/
+  ci.yml
+  task-handler.yml
+scripts/
+  validate-payload.sh
+tests/
+  test-payload-validation.sh
+  test-secret-env.sh
 ```
-.
-├── .github/workflows/   # Task Handler 工作流定义
-├── scripts/             # 校验、辅助脚本（如 payload 校验）
-├── tests/               # 测试用例
-└── LICENSE
-```
 
-## 开源协议
+当前协议和安全边界以 workflow、校验脚本和测试为准，README 不维护运行状态。
 
-本项目基于 [MIT License](LICENSE) 开源。
+## License
+
+[MIT](LICENSE)
