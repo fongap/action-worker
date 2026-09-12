@@ -56,6 +56,7 @@ jobs:
 
     env:
       GH_EXECUTION_REPO: ${{ vars.GH_EXECUTION_REPO }}
+      ACTION_WORKER_REPOSITORY_VARS_JSON: ${{ toJSON(vars) }}
       SCHEMA_VERSION: ${{ needs.validate.outputs.schema_version }}
       REQUEST_ID: ${{ needs.validate.outputs.request_id }}
       PROJECT: ${{ needs.validate.outputs.project }}
