@@ -58,3 +58,6 @@ jobs:
 
       - name: Run secret-env contract tests
         run: bash tests/test-secret-env.sh
+
+      - name: Run repository vars tests
+        run: bash tests/test-repository-vars.sh
