@@ -69,6 +69,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Export repository variables
+        env:
+          REPOSITORY_VARS_JSON: ${{ toJSON(vars) }}
+        run: bash scripts/repository-vars.sh export
+
       - name: Snapshot base environment
         shell: bash
         run: |
@@ -85,6 +90,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           IFS=$'\n\t'
+
+          bash scripts/repository-vars.sh check
 
           if [ -z "${GH_EXECUTION_REPO:-}" ]; then
               echo "::error::缺少 GH_EXECUTION_REPO。" >&2
@@ -112,6 +119,7 @@ jobs:
           cleanup() {
               unset GH_EXECUTION_REPO_PAT 2>/dev/null || true
               rm -f "${RUNNER_TEMP}/action-worker-base-env.names" 2>/dev/null || true
+              rm -f "${RUNNER_TEMP}/action-worker-repository-vars.json" 2>/dev/null || true
               rm -rf "$TMPDIR_WORK"
           }
 

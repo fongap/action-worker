@@ -44,11 +44,15 @@ forbid_regex() {
 
 forbid_regex "不存在 toJSON(secrets)" 'toJSON\s*\(\s*secrets\s*\)'
 require_literal "Execute task 使用通用 secrets 环境" 'env: ${{ secrets }}'
+require_literal "Repository Variables 使用通用 vars 通道" 'REPOSITORY_VARS_JSON: ${{ toJSON(vars) }}'
+require_literal "Repository Variables 在快照前导入" 'bash scripts/repository-vars.sh export'
+require_literal "执行前检查变量冲突" 'bash scripts/repository-vars.sh check'
 forbid_regex "不直接引用任何命名 Secret" '\$\{\{[[:space:]]*secrets\.[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\}\}'
 forbid_regex "不存在动态 environment.name" '^[[:space:]]*environment:[[:space:]]*$'
 require_literal "存在基础环境快照" 'Snapshot base environment'
 require_literal "基础环境快照只保存变量名" 'compgen -e'
 require_literal "cleanup 删除基础环境快照" 'action-worker-base-env.names'
+require_literal "cleanup 删除 Variables 快照" 'action-worker-repository-vars.json'
 forbid_regex "不存在 set -x / printenv / shell 裸 env" 'set[[:space:]]+-x|printenv|^[[:space:]]*env[[:space:]]*$'
 require_literal "payload 由 validate-payload.sh 校验" 'validate-payload.sh'
 
