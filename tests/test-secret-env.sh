@@ -44,6 +44,7 @@ forbid_regex() {
 
 forbid_regex "不存在 toJSON(secrets)" 'toJSON\s*\(\s*secrets\s*\)'
 require_literal "Execute task 使用通用 secrets 环境" 'env: ${{ secrets }}'
+require_literal "Repository Variables 使用独立 JSON 通道" 'ACTION_WORKER_REPOSITORY_VARS_JSON: ${{ toJSON(vars) }}'
 forbid_regex "不直接引用任何命名 Secret" '\$\{\{[[:space:]]*secrets\.[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\}\}'
 forbid_regex "不存在动态 environment.name" '^[[:space:]]*environment:[[:space:]]*$'
 require_literal "存在基础环境快照" 'Snapshot base environment'
