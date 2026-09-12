@@ -28,7 +28,8 @@ export_vars() {
     [[ -n "${RUNNER_TEMP:-}" ]] || fail "RUNNER_TEMP is not set."
     [[ -n "${GITHUB_ENV:-}" ]] || fail "GITHUB_ENV is not set."
 
-    local raw="${REPOSITORY_VARS_JSON:-{}}"
+    local raw="${REPOSITORY_VARS_JSON:-}"
+    [[ -n "$raw" ]] || raw='{}'
     validate_json "$raw"
 
     printf '%s' "$raw" | jq -c 'to_entries | sort_by(.key) | from_entries' > "$SNAPSHOT"
